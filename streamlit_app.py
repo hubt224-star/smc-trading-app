@@ -39,7 +39,7 @@ ASSET_DICT = {
     }
 }
 
-# 3. Sidebar Controls
+# 3. Sidebar Controls (Fixed to 15m Timeframe)
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -49,8 +49,11 @@ custom_ticker = st.sidebar.text_input("Custom Yahoo Ticker:", "")
 if custom_ticker.strip():
     ticker = custom_ticker.strip()
 
-timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=0)
-period_map = {"5m": "5d", "15m": "5d", "1h": "1mo", "1d": "1y"}
+# Timeframe fixed to 15m (Index=1)
+timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=1)
+
+# Extended period to ensure 200 EMA calculation for intraday data
+period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
 
 st.sidebar.header("Risk Management")
 capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
@@ -86,7 +89,7 @@ if not data.empty:
     data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Pivot_High'].shift(1))
     data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Pivot_Low'].shift(1))
 
-    # Relaxed Consolidation Filter (0.2%)
+    # Consolidation Filter (0.2%)
     price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
     data['Consolidation'] = price_range < 0.002
 
@@ -150,8 +153,8 @@ if not data.empty:
     row2_2.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
-    # 11. Plotly Chart
-    st.subheader(f"Live Chart ({selected_asset})")
+    # 11. Plotly Chart (Interactive Display with 20 & 200 EMA)
+    st.subheader(f"Live Chart ({selected_asset} - 15m)")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
         x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
