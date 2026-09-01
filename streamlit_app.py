@@ -5,7 +5,7 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="Ultra SMC Trading Terminal", layout="wide")
+st.set_page_config(page_title="Institutional SMC Terminal", layout="wide")
 
 # 5-second Auto-refresh
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
@@ -37,7 +37,7 @@ ASSET_DICT = {
     }
 }
 
-# Sidebar Inputs
+# Sidebar Market Selection
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -47,14 +47,14 @@ custom_ticker = st.sidebar.text_input("Custom Yahoo Ticker:", "")
 if custom_ticker.strip():
     ticker = custom_ticker.strip()
 
-timeframe = st.sidebar.selectbox("Select Execution Timeframe", ["5m", "15m", "1h", "1d"], index=0)
+timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=0)
 period_map = {"5m": "5d", "15m": "5d", "1h": "1mo", "1d": "1y"}
 
 st.sidebar.header("Risk Management")
-capital = st.sidebar.number_input("Trading Capital (₹/$)", value=100000, step=5000)
+capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
 risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
 
-# Fetch Data
+# Fetch Main Data
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
 if not data.empty:
@@ -63,16 +63,13 @@ if not data.empty:
 
     # Technical Indicators
     data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
+    data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
     
     data['Pivot_High'] = data['High'].rolling(window=5).max()
     data['Pivot_Low'] = data['Low'].rolling(window=5).min()
 
-    # Fair Value Gap (FVG) Detection
-    data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
-    data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
-    
     # SMC Signal Logic
     data['Signal'] = "NO TRADE ZONE"
     
@@ -87,55 +84,84 @@ if not data.empty:
     latest_atr = data['ATR'].iloc[-1]
     latest_rsi = data['RSI'].iloc[-1]
 
-    # Target & Stop Loss Calculation
+    # Target, SL & Safe Quantity Logic
     if latest_signal == "BUY (CE)":
         sl = latest_price - (1.5 * latest_atr)
         target = latest_price + (3.0 * latest_atr)
+        risk_amount = (capital * risk_per_trade) / 100
+        stop_loss_points = abs(latest_price - sl)
+        position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
     elif latest_signal == "SELL (PE)":
         sl = latest_price + (1.5 * latest_atr)
         target = latest_price - (3.0 * latest_atr)
+        risk_amount = (capital * risk_per_trade) / 100
+        stop_loss_points = abs(latest_price - sl)
+        position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
     else:
-        sl, target = 0.0, 0.0
+        sl, target, position_size = 0.0, 0.0, 0
 
-    # Position Sizing Calculation
-    risk_amount = (capital * risk_per_trade) / 100
-    stop_loss_points = abs(latest_price - sl) if sl > 0 else 1
-    position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
-
-    # Metrics Display
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-    col1.metric("Current Price", f"₹ / $ {latest_price:.2f}")
+    # Grid Layout (Row 1)
+    row1_1, row1_2, row1_3 = st.columns(3)
+    row1_1.metric("Current Price", f"₹ {latest_price:.2f}")
     
-    if latest_signal == "BUY (CE)":
-        col2.success(f"**{latest_signal}**")
-        st.components.v1.html("<audio autoplay><source src='https://www.soundjay.com/buttons/sounds/button-3.mp3' type='audio/mpeg'></audio>", height=0)
-    elif latest_signal == "SELL (PE)":
-        col2.error(f"**{latest_signal}**")
-        st.components.v1.html("<audio autoplay><source src='https://www.soundjay.com/buttons/sounds/button-10.mp3' type='audio/mpeg'></audio>", height=0)
-    else:
-        col2.warning(f"**{latest_signal}**")
-        
-    col3.metric("RSI (14)", f"{latest_rsi:.1f}")
-    col4.metric("Est. Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
-    col5.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
-    col6.metric("Recommended Qty", f"{position_size} Units")
+    # Sound Beep JavaScript Generator
+    buy_sound_js = """
+    <script>
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+    </script>
+    """
+    
+    sell_sound_js = """
+    <script>
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(300, ctx.currentTime);
+    osc.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+    </script>
+    """
 
-    # Interactive Chart
-    st.subheader(f"Live Chart, FVG & Execution Levels ({selected_asset})")
+    if latest_signal == "BUY (CE)":
+        row1_2.success(f"**SIGNAL: {latest_signal}**")
+        st.components.v1.html(buy_sound_js, height=0)
+    elif latest_signal == "SELL (PE)":
+        row1_2.error(f"**SIGNAL: {latest_signal}**")
+        st.components.v1.html(sell_sound_js, height=0)
+    else:
+        row1_2.warning(f"**SIGNAL: {latest_signal}**")
+        
+    row1_3.metric("RSI (14)", f"{latest_rsi:.1f}")
+
+    # Grid Layout (Row 2 - Execution Metrics)
+    row2_1, row2_2, row2_3 = st.columns(3)
+    row2_1.metric("Est. Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
+    row2_2.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
+    row2_3.metric("Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
+
+    # Interactive Plotly Chart
+    st.subheader(f"Live Chart ({selected_asset})")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"))
-    fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Trend Filter', line=dict(color='orange', width=2)))
+    fig.add_trace(go.Scatter(x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)))
+    fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)))
     
-    # Target and Stop Loss Overlay
     if latest_signal != "NO TRADE ZONE":
         fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
         fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
 
-    fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=500)
+    fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=450, margin=dict(l=10, r=10, t=30, b=10))
     st.plotly_chart(fig, use_container_width=True)
 
     # Data Table
-    st.subheader("Live Signals Data")
+    st.subheader("Live Market Signals")
     def color_signals(val):
         if val == "BUY (CE)":
             return 'background-color: #28a745; color: white; font-weight: bold;'
@@ -144,6 +170,6 @@ if not data.empty:
         else:
             return 'background-color: #6c757d; color: white;'
 
-    st.dataframe(data[['Open', 'High', 'Low', 'Close', 'RSI', 'ATR', 'Bullish_FVG', 'Bearish_FVG', 'Signal']].tail(10).style.map(color_signals, subset=['Signal']))
+    st.dataframe(data[['Open', 'High', 'Low', 'Close', 'RSI', 'ATR', 'Signal']].tail(10).style.map(color_signals, subset=['Signal']))
 else:
-    st.error("Data fetch nahi ho pa raha hai. Valid Ticker select karein.")
+    st.error("Data fetch nahi ho pa raha hai. Ticker selection re-check karein.")
