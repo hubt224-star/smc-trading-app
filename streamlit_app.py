@@ -69,7 +69,7 @@ if not data.empty:
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
     
-    # Order Flow Direction (20 EMA > 200 EMA = Bullish Order Flow)
+    # Order Flow Direction
     data['Order_Flow'] = "NEUTRAL"
     data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
     data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
@@ -83,23 +83,18 @@ if not data.empty:
     data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
 
     # Order Block (OB) Detection
-    # Bullish OB: Last Red Candle before a High Breakout
-    # Bearish OB: Last Green Candle before a Low Breakout
     data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Pivot_High'].shift(1))
     data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Pivot_Low'].shift(1))
 
-    # Consolidation Range Filter (ADX or Price Tightness)
+    # Relaxed Consolidation Filter (0.2%)
     price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
-    data['Consolidation'] = price_range < 0.005  # Less than 0.5% move in 10 candles = Consolidation
+    data['Consolidation'] = price_range < 0.002
 
-    # 7. Comprehensive SMC Signal Logic
+    # 7. Fast Entry SMC Signal Logic
     data['Signal'] = "NO TRADE ZONE"
     
-    # Buy only when: Structure Break + Bullish Order Flow + RSI > 50 + NOT in Consolidation
-    buy_cond = (data['Close'] > data['Pivot_High'].shift(1)) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 50) & (~data['Consolidation'])
-    
-    # Sell only when: Structure Break + Bearish Order Flow + RSI < 50 + NOT in Consolidation
-    sell_cond = (data['Close'] < data['Pivot_Low'].shift(1)) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 50) & (~data['Consolidation'])
+    buy_cond = ((data['Close'] > data['Pivot_High'].shift(1)) | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
+    sell_cond = ((data['Close'] < data['Pivot_Low'].shift(1)) | data['Bearish_FVG']) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 55) & (~data['Consolidation'])
     
     data.loc[buy_cond, 'Signal'] = "BUY (CE)"
     data.loc[sell_cond, 'Signal'] = "SELL (PE)"
@@ -127,11 +122,10 @@ if not data.empty:
     else:
         sl, target, position_size = 0.0, 0.0, 0
 
-    # 9. Top Metrics Row
+    # 9. Metrics Row
     row1_1, row1_2, row1_3, row1_4 = st.columns(4)
     row1_1.metric("Current Price", f"₹ {latest_price:.2f}")
     
-    # JavaScript Web Audio Sound
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
@@ -150,13 +144,13 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # 10. Execution Metrics Row
+    # 10. Execution Metrics
     row2_1, row2_2, row2_3 = st.columns(3)
     row2_1.metric("Est. Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
     row2_2.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
-    # 11. Interactive Plotly Chart
+    # 11. Plotly Chart
     st.subheader(f"Live Chart ({selected_asset})")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
@@ -181,7 +175,7 @@ if not data.empty:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # 12. Complete SMC Data Table
+    # 12. SMC Analytics Table
     st.subheader("Live Market SMC Analytics Table")
     
     def color_signals(val):
