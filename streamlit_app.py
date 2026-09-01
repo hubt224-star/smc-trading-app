@@ -5,14 +5,16 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="Institutional SMC Terminal", layout="wide")
+# Page Config
+st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
-# 5-second Auto-refresh
+# 1. 5-Second Auto-Refresh
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
-st.title("Institutional SMC Trading Terminal")
-st.caption(f"Live Refresh: 5s | Refresh Count: {count}")
+st.title("⚡ Master Institutional SMC Terminal")
+st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
 
+# 2. Multi-Asset Dictionary
 ASSET_DICT = {
     "NSE Index / F&O": {
         "Nifty 50": "^NSEI",
@@ -37,7 +39,7 @@ ASSET_DICT = {
     }
 }
 
-# Sidebar Market Selection
+# 3. Sidebar Controls
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -54,27 +56,50 @@ st.sidebar.header("Risk Management")
 capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
 risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
 
-# Fetch Main Data
+# 4. Fetch Market Data
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
 if not data.empty:
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
 
-    # Technical Indicators
+    # 5. Technical Indicators & Order Flow
     data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
     data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
     
+    # Order Flow Direction (20 EMA > 200 EMA = Bullish Order Flow)
+    data['Order_Flow'] = "NEUTRAL"
+    data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
+    data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
+
+    # 6. Smart Money Structures
     data['Pivot_High'] = data['High'].rolling(window=5).max()
     data['Pivot_Low'] = data['Low'].rolling(window=5).min()
 
-    # SMC Signal Logic
+    # Fair Value Gap (FVG)
+    data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
+    data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
+
+    # Order Block (OB) Detection
+    # Bullish OB: Last Red Candle before a High Breakout
+    # Bearish OB: Last Green Candle before a Low Breakout
+    data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Pivot_High'].shift(1))
+    data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Pivot_Low'].shift(1))
+
+    # Consolidation Range Filter (ADX or Price Tightness)
+    price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
+    data['Consolidation'] = price_range < 0.005  # Less than 0.5% move in 10 candles = Consolidation
+
+    # 7. Comprehensive SMC Signal Logic
     data['Signal'] = "NO TRADE ZONE"
     
-    buy_cond = (data['Close'] > data['Pivot_High'].shift(1)) & (data['Close'] > data['EMA200']) & (data['RSI'] > 50)
-    sell_cond = (data['Close'] < data['Pivot_Low'].shift(1)) & (data['Close'] < data['EMA200']) & (data['RSI'] < 50)
+    # Buy only when: Structure Break + Bullish Order Flow + RSI > 50 + NOT in Consolidation
+    buy_cond = (data['Close'] > data['Pivot_High'].shift(1)) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 50) & (~data['Consolidation'])
+    
+    # Sell only when: Structure Break + Bearish Order Flow + RSI < 50 + NOT in Consolidation
+    sell_cond = (data['Close'] < data['Pivot_Low'].shift(1)) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 50) & (~data['Consolidation'])
     
     data.loc[buy_cond, 'Signal'] = "BUY (CE)"
     data.loc[sell_cond, 'Signal'] = "SELL (PE)"
@@ -83,8 +108,10 @@ if not data.empty:
     latest_price = data['Close'].iloc[-1]
     latest_atr = data['ATR'].iloc[-1]
     latest_rsi = data['RSI'].iloc[-1]
+    latest_of = data['Order_Flow'].iloc[-1]
+    is_consolidating = data['Consolidation'].iloc[-1]
 
-    # Target, SL & Safe Quantity Logic
+    # 8. Dynamic Target, Stop-Loss & Position Sizing
     if latest_signal == "BUY (CE)":
         sl = latest_price - (1.5 * latest_atr)
         target = latest_price + (3.0 * latest_atr)
@@ -100,34 +127,13 @@ if not data.empty:
     else:
         sl, target, position_size = 0.0, 0.0, 0
 
-    # Grid Layout (Row 1)
-    row1_1, row1_2, row1_3 = st.columns(3)
+    # 9. Top Metrics Row
+    row1_1, row1_2, row1_3, row1_4 = st.columns(4)
     row1_1.metric("Current Price", f"₹ {latest_price:.2f}")
     
-    # Sound Beep JavaScript Generator
-    buy_sound_js = """
-    <script>
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    var osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(800, ctx.currentTime);
-    osc.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.4);
-    </script>
-    """
-    
-    sell_sound_js = """
-    <script>
-    var ctx = new (window.AudioContext || window.webkitAudioContext)();
-    var osc = ctx.createOscillator();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(300, ctx.currentTime);
-    osc.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.4);
-    </script>
-    """
+    # JavaScript Web Audio Sound
+    buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
+    sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
     if latest_signal == "BUY (CE)":
         row1_2.success(f"**SIGNAL: {latest_signal}**")
@@ -136,32 +142,48 @@ if not data.empty:
         row1_2.error(f"**SIGNAL: {latest_signal}**")
         st.components.v1.html(sell_sound_js, height=0)
     else:
-        row1_2.warning(f"**SIGNAL: {latest_signal}**")
+        if is_consolidating:
+            row1_2.warning("**CONSOLIDATION PHASE**")
+        else:
+            row1_2.warning(f"**SIGNAL: {latest_signal}**")
         
-    row1_3.metric("RSI (14)", f"{latest_rsi:.1f}")
+    row1_3.metric("Order Flow", latest_of)
+    row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # Grid Layout (Row 2 - Execution Metrics)
+    # 10. Execution Metrics Row
     row2_1, row2_2, row2_3 = st.columns(3)
     row2_1.metric("Est. Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
     row2_2.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
-    # Interactive Plotly Chart
+    # 11. Interactive Plotly Chart
     st.subheader(f"Live Chart ({selected_asset})")
     fig = go.Figure()
-    fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"))
-    fig.add_trace(go.Scatter(x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)))
-    fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)))
+    fig.add_trace(go.Candlestick(
+        x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
+    ))
+    fig.add_trace(go.Scatter(
+        x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
+    ))
+    fig.add_trace(go.Scatter(
+        x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
+    ))
     
     if latest_signal != "NO TRADE ZONE":
         fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
         fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
 
-    fig.update_layout(xaxis_rangeslider_visible=False, template="plotly_dark", height=450, margin=dict(l=10, r=10, t=30, b=10))
+    fig.update_layout(
+        xaxis_rangeslider_visible=False,
+        template="plotly_dark",
+        height=480,
+        margin=dict(l=10, r=10, t=30, b=10)
+    )
     st.plotly_chart(fig, use_container_width=True)
 
-    # Data Table
-    st.subheader("Live Market Signals")
+    # 12. Complete SMC Data Table
+    st.subheader("Live Market SMC Analytics Table")
+    
     def color_signals(val):
         if val == "BUY (CE)":
             return 'background-color: #28a745; color: white; font-weight: bold;'
@@ -170,6 +192,11 @@ if not data.empty:
         else:
             return 'background-color: #6c757d; color: white;'
 
-    st.dataframe(data[['Open', 'High', 'Low', 'Close', 'RSI', 'ATR', 'Signal']].tail(10).style.map(color_signals, subset=['Signal']))
+    st.dataframe(
+        data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'Bullish_FVG', 'Bearish_FVG', 'Bullish_OB', 'Bearish_OB', 'Consolidation', 'Signal']]
+        .tail(12)
+        .style.map(color_signals, subset=['Signal'])
+    )
+
 else:
-    st.error("Data fetch nahi ho pa raha hai. Ticker selection re-check karein.")
+    st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
