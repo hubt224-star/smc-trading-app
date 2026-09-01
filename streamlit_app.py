@@ -5,12 +5,12 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-st.set_page_config(page_title="Advanced SMC Terminal", layout="wide")
+st.set_page_config(page_title="Ultra SMC Trading Terminal", layout="wide")
 
-# 5-second auto refresh
+# 5-second Auto-refresh
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
-st.title("Advanced SMC Trading Terminal (Multi-Asset)")
+st.title("Institutional SMC Trading Terminal")
 st.caption(f"Live Refresh: 5s | Refresh Count: {count}")
 
 ASSET_DICT = {
@@ -37,6 +37,7 @@ ASSET_DICT = {
     }
 }
 
+# Sidebar Inputs
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -46,9 +47,14 @@ custom_ticker = st.sidebar.text_input("Custom Yahoo Ticker:", "")
 if custom_ticker.strip():
     ticker = custom_ticker.strip()
 
-timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=0)
+timeframe = st.sidebar.selectbox("Select Execution Timeframe", ["5m", "15m", "1h", "1d"], index=0)
 period_map = {"5m": "5d", "15m": "5d", "1h": "1mo", "1d": "1y"}
 
+st.sidebar.header("Risk Management")
+capital = st.sidebar.number_input("Trading Capital (₹/$)", value=100000, step=5000)
+risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
+
+# Fetch Data
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
 if not data.empty:
@@ -59,12 +65,15 @@ if not data.empty:
     data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
-    data['Vol_MA'] = data['Volume'].rolling(window=20).mean()
     
     data['Pivot_High'] = data['High'].rolling(window=5).max()
     data['Pivot_Low'] = data['Low'].rolling(window=5).min()
+
+    # Fair Value Gap (FVG) Detection
+    data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
+    data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
     
-    # Enhanced SMC + RSI + Volume Signal Logic
+    # SMC Signal Logic
     data['Signal'] = "NO TRADE ZONE"
     
     buy_cond = (data['Close'] > data['Pivot_High'].shift(1)) & (data['Close'] > data['EMA200']) & (data['RSI'] > 50)
@@ -88,8 +97,13 @@ if not data.empty:
     else:
         sl, target = 0.0, 0.0
 
-    # Top Dashboard Metrics
-    col1, col2, col3, col4, col5 = st.columns(5)
+    # Position Sizing Calculation
+    risk_amount = (capital * risk_per_trade) / 100
+    stop_loss_points = abs(latest_price - sl) if sl > 0 else 1
+    position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
+
+    # Metrics Display
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     col1.metric("Current Price", f"₹ / $ {latest_price:.2f}")
     
     if latest_signal == "BUY (CE)":
@@ -104,13 +118,15 @@ if not data.empty:
     col3.metric("RSI (14)", f"{latest_rsi:.1f}")
     col4.metric("Est. Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
     col5.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
+    col6.metric("Recommended Qty", f"{position_size} Units")
 
-    # Interactive Chart with SL and Target Lines
-    st.subheader(f"Live Chart & Levels ({selected_asset})")
+    # Interactive Chart
+    st.subheader(f"Live Chart, FVG & Execution Levels ({selected_asset})")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"))
     fig.add_trace(go.Scatter(x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Trend Filter', line=dict(color='orange', width=2)))
     
+    # Target and Stop Loss Overlay
     if latest_signal != "NO TRADE ZONE":
         fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
         fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
@@ -128,6 +144,6 @@ if not data.empty:
         else:
             return 'background-color: #6c757d; color: white;'
 
-    st.dataframe(data[['Open', 'High', 'Low', 'Close', 'RSI', 'ATR', 'Signal']].tail(10).style.map(color_signals, subset=['Signal']))
+    st.dataframe(data[['Open', 'High', 'Low', 'Close', 'RSI', 'ATR', 'Bullish_FVG', 'Bearish_FVG', 'Signal']].tail(10).style.map(color_signals, subset=['Signal']))
 else:
     st.error("Data fetch nahi ho pa raha hai. Valid Ticker select karein.")
