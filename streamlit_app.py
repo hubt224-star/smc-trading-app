@@ -5,7 +5,7 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-# Page Config
+# 1. Page Config (MUST BE FIRST STREAMLIT COMMAND)
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
 # ==============================================================================
@@ -29,14 +29,13 @@ if not st.session_state.authenticated:
         else:
             st.error("❌ Incorrect Password! Access Denied.")
             
-    st.stop()  # Sahi password na milne tak neeche ka code run nahi hoga
+    st.stop()
 # ==============================================================================
 
-
-# 1. 5-Second Auto-Refresh
+# 2. 5-Second Auto-Refresh
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
-# Sidebar me Logout button (Optional)
+# Sidebar me Logout button
 if st.sidebar.button("🔒 Logout"):
     st.session_state.authenticated = False
     st.rerun()
@@ -44,7 +43,7 @@ if st.sidebar.button("🔒 Logout"):
 st.title("⚡ Master Institutional SMC Terminal")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
 
-# 2. Multi-Asset Dictionary
+# 3. Multi-Asset Dictionary
 ASSET_DICT = {
     "NSE Index / F&O": {
         "Nifty 50": "^NSEI",
@@ -69,7 +68,7 @@ ASSET_DICT = {
     }
 }
 
-# 3. Sidebar Controls (Fixed to 15m Timeframe)
+# 4. Sidebar Controls (Fixed to 15m Timeframe)
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -79,51 +78,41 @@ custom_ticker = st.sidebar.text_input("Custom Yahoo Ticker:", "")
 if custom_ticker.strip():
     ticker = custom_ticker.strip()
 
-# Timeframe fixed to 15m (Index=1)
 timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=1)
-
-# Extended period to ensure 200 EMA calculation for intraday data
 period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
 
 st.sidebar.header("Risk Management")
 capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
 risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
 
-# 4. Fetch Market Data
+# 5. Fetch Market Data
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
 if not data.empty:
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
 
-    # 5. Technical Indicators & Order Flow
     data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
     data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
     
-    # Order Flow Direction
     data['Order_Flow'] = "NEUTRAL"
     data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
     data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
 
-    # 6. Smart Money Structures
     data['Pivot_High'] = data['High'].rolling(window=5).max()
     data['Pivot_Low'] = data['Low'].rolling(window=5).min()
 
-    # Fair Value Gap (FVG)
     data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
     data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
 
-    # Order Block (OB) Detection
     data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Pivot_High'].shift(1))
     data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Pivot_Low'].shift(1))
 
-    # Consolidation Filter (0.2%)
     price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
     data['Consolidation'] = price_range < 0.002
 
-    # 7. Fast Entry SMC Signal Logic
     data['Signal'] = "NO TRADE ZONE"
     
     buy_cond = ((data['Close'] > data['Pivot_High'].shift(1)) | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
@@ -139,7 +128,6 @@ if not data.empty:
     latest_of = data['Order_Flow'].iloc[-1]
     is_consolidating = data['Consolidation'].iloc[-1]
 
-    # 8. Dynamic Target, Stop-Loss & Position Sizing
     if latest_signal == "BUY (CE)":
         sl = latest_price - (1.5 * latest_atr)
         target = latest_price + (3.0 * latest_atr)
@@ -155,7 +143,6 @@ if not data.empty:
     else:
         sl, target, position_size = 0.0, 0.0, 0
 
-    # 9. Metrics Row
     row1_1, row1_2, row1_3, row1_4 = st.columns(4)
     row1_1.metric("Current Price", f"₹ {latest_price:.2f}")
     
@@ -177,13 +164,11 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # 10. Execution Metrics
     row2_1, row2_2, row2_3 = st.columns(3)
     row2_1.metric("Est. Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
     row2_2.metric("Target (1:2)", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
-    # 11. Plotly Chart (Interactive Display with 20 & 200 EMA)
     st.subheader(f"Live Chart ({selected_asset} - 15m)")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
@@ -208,7 +193,6 @@ if not data.empty:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # 12. SMC Analytics Table
     st.subheader("Live Market SMC Analytics Table")
     
     def color_signals(val):
