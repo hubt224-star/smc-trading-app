@@ -8,8 +8,38 @@ from streamlit_autorefresh import st_autorefresh
 # Page Config
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
+# ==============================================================================
+# 🔒 LOGIN / PASSWORD PROTECTION SYSTEM
+# ==============================================================================
+APP_PASSWORD = "mysecretpassword123"  # <-- Apne hisab se password yahan change karein
+
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    st.title("🔒 Master Institutional SMC Terminal")
+    st.subheader("Login Required to Access App")
+    
+    user_pass = st.text_input("Enter Password to access:", type="password")
+    
+    if st.button("Access App"):
+        if user_pass == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("❌ Incorrect Password! Access Denied.")
+            
+    st.stop()  # Sahi password na milne tak neeche ka code run nahi hoga
+# ==============================================================================
+
+
 # 1. 5-Second Auto-Refresh
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
+
+# Sidebar me Logout button (Optional)
+if st.sidebar.button("🔒 Logout"):
+    st.session_state.authenticated = False
+    st.rerun()
 
 st.title("⚡ Master Institutional SMC Terminal")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
@@ -197,43 +227,3 @@ if not data.empty:
 
 else:
     st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
-    
-import streamlit as st
-
-# ==========================================
-# 1. PASSWORD PROTECTION SYSTEM
-# ==========================================
-# Yahan apna pasandida password rakhein:
-APP_PASSWORD = "mysecretpassword123"
-
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-if not st.session_state.authenticated:
-    st.title("🔒 Master Institutional SMC Terminal")
-    st.subheader("Login Required to Access App")
-    
-    # Password Input Box
-    user_pass = st.text_input("Enter Password:", type="password")
-    
-    if st.button("Access App"):
-        if user_pass == APP_PASSWORD:
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("❌ Incorrect Password! Access Denied.")
-            
-    # Jab tak password galat hai ya nahi dala, aage ka app code run nahi hoga
-    st.stop()
-
-# ==========================================
-# 2. AAPKA PURANA APP CODE YAHAN SE SHURU HOGA
-# ==========================================
-
-# Example Logout option sidebar me (Optional):
-if st.sidebar.button("Logout"):
-    st.session_state.authenticated = False
-    st.rerun()
-
-# --- AAPKA PURE TRADING APP KA ORIGINAL CODE NICHE RAHEGA ---
-
