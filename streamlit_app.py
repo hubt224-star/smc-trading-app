@@ -11,7 +11,7 @@ st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Ter
 # ==============================================================================
 # 🔒 LOGIN / PASSWORD PROTECTION SYSTEM
 # ==============================================================================
-APP_PASSWORD = "mysecretpassword123"  # <-- Apne hisab se password yahan change karein
+APP_PASSWORD = "Mysecretpassword@1990"  # <-- Apne hisab se password yahan change karein
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
