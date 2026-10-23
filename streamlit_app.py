@@ -4,13 +4,10 @@ import pandas as pd
 import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
-from streamlit_local_storage import LocalStorage
+import streamlit.components.v1 as components
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
-
-# Local Storage Initialization
-localS = LocalStorage()
 
 # Sidebar Configuration
 st.sidebar.markdown("### 🚀 Terminal Access")
@@ -25,12 +22,11 @@ if "authenticated" not in st.session_state:
 if "broker_connected" not in st.session_state:
     st.session_state["broker_connected"] = False
 
-# Retrieve stored credentials if not in session state
 if "saved_client_id" not in st.session_state:
-    st.session_state["saved_client_id"] = localS.getItem("angel_client_id") or ""
+    st.session_state["saved_client_id"] = ""
 
 if "saved_api_key" not in st.session_state:
-    st.session_state["saved_api_key"] = localS.getItem("angel_api_key") or ""
+    st.session_state["saved_api_key"] = ""
 
 # Password Form
 with st.sidebar.form(key="login_form"):
@@ -101,18 +97,24 @@ st.sidebar.header("🔌 Multi-Broker Connect")
 selected_broker = st.sidebar.selectbox("Select Your Broker", ["Angel One", "Zerodha (Kite)", "Upstox", "Groww", "Other API"])
 
 with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=True):
-    client_id_input = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"])
-    api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"])
-    api_secret_input = st.text_input("API Secret / Password / MPIN", type="password")
+    client_id_input = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"], key="client_id_field")
+    api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"], key="api_key_field")
+    api_secret_input = st.text_input("API Secret / Password / MPIN", type="password", key="api_secret_field")
     
-    if st.button("Connect Demat Account"):
+    if st.button("Connect Demat Account", key="connect_demat_btn"):
         if client_id_input and api_key_input:
-            # Save credentials to browser local storage
-            localS.setItem("angel_client_id", client_id_input)
-            localS.setItem("angel_api_key", api_key_input)
             st.session_state["saved_client_id"] = client_id_input
             st.session_state["saved_api_key"] = api_key_input
             
+            # Browser localStorage me safe save karna JS ke dwara
+            js_save = f"""
+            <script>
+            localStorage.setItem('angel_client_id', '{client_id_input}');
+            localStorage.setItem('angel_api_key', '{api_key_input}');
+            </script>
+            """
+            components.html(js_save, height=0)
+
             st.session_state['broker_connected'] = True
             st.session_state['active_broker'] = selected_broker
             st.sidebar.success(f"✅ Connected to {selected_broker} Successfully!")
@@ -231,7 +233,6 @@ if not data.empty:
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
-    # --- HTML SETUP STATUS DISPLAY ---
     if latest_setup == "BULLISH SETUP":
         row1_2.markdown(
             f"""<div style="background-color:#0e3a1f; color:#2ecc71; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #2ecc71; font-size:16px;">
@@ -268,11 +269,10 @@ if not data.empty:
     row2_2.metric("Target Level (1:2)", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Max Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
-    # --- QUICK ORDER EXECUTION UI ---
     if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
         active_b = st.session_state.get('active_broker', 'Broker')
         st.markdown(f"### ⚡ Quick Order Execution via {active_b}")
-        if st.button(f"🚀 Execute {selected_asset} ({latest_setup})"):
+        if st.button(f"🚀 Execute {selected_asset} ({latest_setup})", key="exec_trade_btn"):
             st.success(f"Order successfully triggered for {selected_asset} via {active_b} API!")
 
     st.subheader(f"Live Chart ({selected_asset} - 15m)")
