@@ -5,16 +5,15 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
-# 1. Page Config (MUST BE FIRST STREAMLIT COMMAND)
-st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Terminal", layout="wide")
+st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
 # ==============================================================================
-# 🔐 PAID SUBSCRIPTION & ADMIN BYPASS LOCK SYSTEM
+# 🔐 UPDATED PASSWORDS SET HERE
 # ==============================================================================
-PAID_ACCESS_PASSWORD = "Smc@tools123"  
-MASTER_ADMIN_PASSWORD = "SMC_ALGO"     
+PAID_ACCESS_PASSWORD = "Smc@tools"          # Customer password
+MASTER_ADMIN_PASSWORD = "SMCALGO1999"   # Tera admin bypass password
 
-st.sidebar.markdown("### 🚀 Alpha Trade School")
+st.sidebar.markdown("### 🚀 Terminal Access")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 
 st.sidebar.markdown("---")
@@ -32,13 +31,13 @@ else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
 if not is_unlocked:
-    st.title("⚡ Alpha Trade School | Institutional SMC Terminal")
+    st.title("⚡ Institutional SMC Terminal")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
     st.markdown("### 🚀 Pay ₹499 & Get Instant Password Access")
     
-    upi_id = "9199786026@ptyes"
-    payee_name = "Mdaziz Shekh"
+    upi_id = "9199786026@ptyes[span_0](start_span)"[span_0](end_span)
+    payee_name = "Mdaziz Shekh[span_1](start_span)"[span_1](end_span)
     amount = "499"
     
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
@@ -70,13 +69,9 @@ if not is_unlocked:
             
     st.stop()
 
-# ==============================================================================
-# 📊 UNLOCKED APP / MAIN TERMINAL CODE
-# ==============================================================================
-
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
-st.title("⚡ Alpha Trade School | Institutional SMC Analytics")
+st.title("⚡ Institutional SMC Analytics Terminal")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
 
 ASSET_DICT = {
@@ -234,7 +229,7 @@ if not data.empty:
     )
 
     st.markdown("---")
-    st.caption("⚠️ **Disclaimer:** Alpha Trade School is an educational initiative. We are not SEBI registered advisors or research analysts. All indicators, market setups, and calculators provided in this terminal are strictly for learning, technical analysis practice, and quantitative research purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
+    st.caption("⚠️ **Disclaimer:** All indicators, market setups, and calculators provided in this terminal are strictly for learning, technical analysis practice, and quantitative research purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
 
 else:
     st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
