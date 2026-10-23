@@ -5,32 +5,42 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
+# Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
+# Sidebar Configuration
 st.sidebar.markdown("### 🚀 Terminal Access")
 st.sidebar.caption("Mentor: Mr. Yusuf")
-
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Scanner Access")
 
-# Session state se check karenge taaki refresh hone par bhi password yaad rahe ya lock rahe
+# Session State Initialization
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-user_pass = st.sidebar.text_input("Enter Scanner Password:", type="password")
+# Password Form
+with st.sidebar.form(key="login_form"):
+    user_pass = st.text_input("Enter Scanner Password:", type="password")
+    submit_button = st.form_submit_button(label="Unlock Terminal")
 
-if user_pass == "Smc@tools" or user_pass == "SMCALGO@1999":
-    st.session_state["authenticated"] = True
+if submit_button:
+    if user_pass == "Smc@tools" or user_pass == "SMCALGO@1999":
+        st.session_state["authenticated"] = True
+        st.session_state["admin_mode"] = (user_pass == "SMCALGO@1999")
+    else:
+        st.session_state["authenticated"] = False
+        st.sidebar.error("❌ Incorrect Password!")
 
+# Authentication Status UI
 if st.session_state["authenticated"]:
-    if user_pass == "SMCALGO@1999":
+    if st.session_state.get("admin_mode", False):
         st.sidebar.success("👨‍💻 Admin Access Active (Bypassed)")
     else:
         st.sidebar.success("✅ Scanner Unlocked")
 else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
-# Agar authenticated nahi hai, toh yahin rok do aur payment page dikhao
+# Locked Screen View
 if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
@@ -70,7 +80,7 @@ if not st.session_state["authenticated"]:
             
     st.stop()
 
-# Ab aage ka main terminal code chalega sirf unlocked hone par
+# Unlocked Content Area
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
 st.title("⚡ Institutional SMC Analytics Terminal")
