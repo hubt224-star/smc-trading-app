@@ -214,7 +214,7 @@ if not data.empty:
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
-    # --- CUSTOM HTML SETUP STATUS DISPLAY (GREEN/RED/YELLOW) ---
+    # --- HTML SETUP STATUS DISPLAY ---
     if latest_setup == "BULLISH SETUP":
         row1_2.markdown(
             f"""<div style="background-color:#0e3a1f; color:#2ecc71; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #2ecc71; font-size:16px;">
@@ -284,10 +284,20 @@ if not data.empty:
 
     st.subheader("Live Market SMC Analytics Table")
 
-    st.dataframe(
-        data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'Bullish_FVG', 'Bearish_FVG', 'Bullish_OB', 'Bearish_OB', 'Consolidation', 'Setup']]
-        .tail(12)
-    )
+    # --- COLOR HIGHLIGHTING FOR TABLE SETUP COLUMN ---
+    def color_table_setup(val):
+        if val == "BULLISH SETUP":
+            return 'background-color: #0e3a1f; color: #2ecc71; font-weight: bold;'
+        elif val == "BEARISH SETUP":
+            return 'background-color: #3a0e0e; color: #e74c3c; font-weight: bold;'
+        elif val == "CONSOLIDATION PHASE":
+            return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
+        return ''
+
+    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'Bullish_FVG', 'Bearish_FVG', 'Bullish_OB', 'Bearish_OB', 'Consolidation', 'Setup']].tail(12)
+    
+    styled_table = table_df.style.map(color_table_setup, subset=['Setup'])
+    st.dataframe(styled_table, use_container_width=True)
 
     st.markdown("---")
     st.caption("⚠️ **Disclaimer:** All indicators, market setups, and calculators provided in this terminal are strictly for learning, technical analysis practice, and quantitative research purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
