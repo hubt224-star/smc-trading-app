@@ -9,9 +9,10 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Terminal", layout="wide")
 
 # ==============================================================================
-# 🔐 PAID SUBSCRIPTION & LOCK SYSTEM (₹499 SCANNER ACCESS)
+# 🔐 PAID SUBSCRIPTION & ADMIN BYPASS LOCK SYSTEM
 # ==============================================================================
-PAID_ACCESS_PASSWORD = "ALPHA_SCANNER_499"  # Jo password tu payment ke baad WhatsApp par dega
+PAID_ACCESS_PASSWORD = "ALPHA_SCANNER_499"  # Jo password tu payment ke baad user ko dega
+MASTER_ADMIN_PASSWORD = "YUSUF_BOSS_786"     # Yeh tera khud ka secret admin password hai (Bina pay kiye use karne ke liye)
 
 st.sidebar.markdown("### 🚀 Alpha Trade School")
 st.sidebar.caption("Mentor: Mr. Yusuf")
@@ -20,13 +21,19 @@ st.sidebar.markdown("---")
 st.sidebar.header("🔑 Scanner Access")
 user_pass = st.sidebar.text_input("Enter Scanner Password:", type="password")
 
-if user_pass == PAID_ACCESS_PASSWORD:
-    st.sidebar.success("✅ Scanner Unlocked")
+# Check if password matches user password OR admin master password
+is_unlocked = (user_pass == PAID_ACCESS_PASSWORD) or (user_pass == MASTER_ADMIN_PASSWORD)
+
+if is_unlocked:
+    if user_pass == MASTER_ADMIN_PASSWORD:
+        st.sidebar.success("👨‍💻 Admin Access Active (Bypassed)")
+    else:
+        st.sidebar.success("✅ Scanner Unlocked")
 else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
-# Check Authentication
-if user_pass != PAID_ACCESS_PASSWORD:
+# Check Authentication - Agar unlock nahi hai toh locking screen dikhao
+if not is_unlocked:
     st.title("⚡ Alpha Trade School | Institutional SMC Terminal")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
