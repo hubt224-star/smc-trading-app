@@ -9,47 +9,70 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Terminal", layout="wide")
 
 # ==============================================================================
-# 🔐 LOGIN / PASSWORD PROTECTION SYSTEM
+# 🔐 PAID SUBSCRIPTION & LOCK SYSTEM (₹499 SCANNER ACCESS)
 # ==============================================================================
-APP_PASSWORD = "mysecretpassword123"
+PAID_ACCESS_PASSWORD = "ALPHA_SCANNER_499"  # Jo password tu payment ke baad WhatsApp par dega
 
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-if not st.session_state.authenticated:
-    st.title("⚡ Alpha Trade School - Institutional Terminal")
-    st.subheader("Login Required to Access App")
-    
-    user_pass = st.text_input("Enter Password to access:", type="password")
-    
-    if st.button("Access App"):
-        if user_pass == APP_PASSWORD:
-            st.session_state.authenticated = True
-            st.rerun()
-        else:
-            st.error("❌ Incorrect Password! Access Denied.")
-            
-    st.stop()
-
-# 2. 5-Second Auto-Refresh
-count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
-
-# Sidebar Branding & Controls
 st.sidebar.markdown("### 🚀 Alpha Trade School")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 
-if st.sidebar.button("🔒 Logout"):
-    st.session_state.authenticated = False
-    st.rerun()
-
 st.sidebar.markdown("---")
+st.sidebar.header("🔑 Scanner Access")
+user_pass = st.sidebar.text_input("Enter Scanner Password:", type="password")
 
-# Referral Banner for Monetization (Compliant)
-st.sidebar.info(
-    "💡 **Educational Purpose Only**\n\n"
-    "Open Demat Account with Angel One using Referral Code: **HONNZY** "
-    "to access learning resources & community!"
-)
+if user_pass == PAID_ACCESS_PASSWORD:
+    st.sidebar.success("✅ Scanner Unlocked")
+else:
+    st.sidebar.warning("🔒 Scanner Locked (₹499)")
+
+# Check Authentication
+if user_pass != PAID_ACCESS_PASSWORD:
+    st.title("⚡ Alpha Trade School | Institutional SMC Terminal")
+    st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
+    
+    st.markdown("### 🚀 Pay ₹499 & Get Instant Password Access")
+    
+    # UPI Details from your QR Code
+    upi_id = "9199786026@ptyes[span_1](start_span)"[span_1](end_span)
+    payee_name = "Mdaziz Shekh[span_2](start_span)"[span_2](end_span)
+    amount = "499"
+    
+    # Dynamic 499 INR QR Code Generation
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
+    
+    col1, col2 = st.columns([1, 1.2])
+    
+    with col1:
+        st.image(qr_url, caption="Scan using GPay / PhonePe / Paytm / BHIM")
+        
+    with col2:
+        st.markdown(f"""
+        **Steps to unlock access:**
+        1. Scan the QR code using any UPI app.
+        2. Pay **₹{amount}**.
+        3. Click the button below to send payment screenshot on WhatsApp.
+        4. Enter the password received on WhatsApp in the **Sidebar** to unlock!
+        """)
+        
+        wa_text = "Bhai%20maine%20499%20pay%20kar%20diya%20hai,%20scanner%20ka%20password%20dedo."
+        wa_url = f"https://wa.me/918108433013?text={wa_text}"
+        
+        st.markdown(f'''
+            <a href="{wa_url}" target="_blank">
+                <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">
+                    📲 Send Screenshot on WhatsApp
+                </button>
+            </a>
+            ''', unsafe_allow_html=True)
+            
+    st.stop()  # Stop execution here until unlocked
+
+# ==============================================================================
+# 📊 UNLOCKED APP / MAIN TERMINAL CODE
+# ==============================================================================
+
+# 2. 5-Second Auto-Refresh
+count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
 st.title("⚡ Alpha Trade School | Institutional SMC Analytics")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
