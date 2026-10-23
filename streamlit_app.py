@@ -8,7 +8,7 @@ from streamlit_autorefresh import st_autorefresh
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
 PAID_ACCESS_PASSWORD = "Smc@tools"
-MASTER_ADMIN_PASSWORD = "SMCALGO1999DAAL"
+MASTER_ADMIN_PASSWORD = "SMCALGO1999"
 
 st.sidebar.markdown("### 🚀 Terminal Access")
 st.sidebar.caption("Mentor: Mr. Yusuf")
