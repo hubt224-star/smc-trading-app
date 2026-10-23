@@ -12,12 +12,17 @@ st.sidebar.caption("Mentor: Mr. Yusuf")
 
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Scanner Access")
+
+# Session state se check karenge taaki refresh hone par bhi password yaad rahe ya lock rahe
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
 user_pass = st.sidebar.text_input("Enter Scanner Password:", type="password")
 
-# Direct password check
-is_unlocked = (user_pass == "Smc@tools") or (user_pass == "SMCALGO@1999")
+if user_pass == "Smc@tools" or user_pass == "SMCALGO@1999":
+    st.session_state["authenticated"] = True
 
-if is_unlocked:
+if st.session_state["authenticated"]:
     if user_pass == "SMCALGO@1999":
         st.sidebar.success("👨‍💻 Admin Access Active (Bypassed)")
     else:
@@ -25,7 +30,8 @@ if is_unlocked:
 else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
-if not is_unlocked:
+# Agar authenticated nahi hai, toh yahin rok do aur payment page dikhao
+if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
@@ -64,6 +70,7 @@ if not is_unlocked:
             
     st.stop()
 
+# Ab aage ka main terminal code chalega sirf unlocked hone par
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
 st.title("⚡ Institutional SMC Analytics Terminal")
