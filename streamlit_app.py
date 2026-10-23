@@ -32,9 +32,9 @@ if user_pass != PAID_ACCESS_PASSWORD:
     
     st.markdown("### 🚀 Pay ₹499 & Get Instant Password Access")
     
-    # UPI Details from your QR Code
-    upi_id = "9199786026@ptyes[span_1](start_span)"[span_1](end_span)
-    payee_name = "Mdaziz Shekh[span_2](start_span)"[span_2](end_span)
+    # UPI Details
+    upi_id = "9199786026@ptyes"
+    payee_name = "Mdaziz Shekh"
     amount = "499"
     
     # Dynamic 499 INR QR Code Generation
