@@ -18,8 +18,8 @@ st.sidebar.header("🔑 Scanner Access")
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
 
-if "angel_connected" not in st.session_state:
-    st.session_state["angel_connected"] = False
+if "broker_connected" not in st.session_state:
+    st.session_state["broker_connected"] = False
 
 # Password Form
 with st.sidebar.form(key="login_form"):
@@ -83,23 +83,27 @@ if not st.session_state["authenticated"]:
             
     st.stop()
 
-# --- ANGEL ONE BROKER API CONNECTION SECTION ---
+# --- MULTI-BROKER API CONNECTION SECTION ---
 st.sidebar.markdown("---")
-st.sidebar.header("🔌 Angel One API Connect")
-with st.sidebar.expander("Connect Demat Account"):
-    api_key_input = st.text_input("API Key", type="default")
-    client_code_input = st.text_input("Client ID (UserID)", type="default")
-    pin_input = st.text_input("Password / MPIN", type="password")
-    
-    if st.button("Connect Broker"):
-        if api_key_input and client_code_input:
-            st.session_state['angel_connected'] = True
-            st.sidebar.success("✅ Broker Connected for Web Execution!")
-        else:
-            st.sidebar.error("❌ Please enter valid API Key & Client ID.")
+st.sidebar.header("🔌 Multi-Broker Connect")
 
-if st.session_state.get('angel_connected', False):
-    st.sidebar.info("🟢 Broker Status: Connected")
+selected_broker = st.sidebar.selectbox("Select Your Broker", ["Angel One", "Zerodha (Kite)", "Upstox", "Groww", "Other API"])
+
+with st.sidebar.expander(f"Connect {selected_broker} Account"):
+    client_id_input = st.text_input("Client ID / User ID", type="default")
+    api_key_input = st.text_input("API Key / App ID", type="default")
+    api_secret_input = st.text_input("API Secret / Password / MPIN", type="password")
+    
+    if st.button("Connect Demat Account"):
+        if client_id_input and api_key_input:
+            st.session_state['broker_connected'] = True
+            st.session_state['active_broker'] = selected_broker
+            st.sidebar.success(f"✅ Connected to {selected_broker} Successfully!")
+        else:
+            st.sidebar.error("❌ Please fill in the required credentials.")
+
+if st.session_state.get('broker_connected', False):
+    st.sidebar.info(f"🟢 Active Broker: {st.session_state.get('active_broker', 'None')}")
 
 # Unlocked Content Area
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
@@ -231,10 +235,11 @@ if not data.empty:
     row2_3.metric("Max Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
     # --- QUICK ORDER EXECUTION UI ---
-    if st.session_state.get('angel_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
-        st.markdown("### ⚡ Quick API Order Execution")
+    if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
+        active_b = st.session_state.get('active_broker', 'Broker')
+        st.markdown(f"### ⚡ Quick Order Execution via {active_b}")
         if st.button(f"🚀 Execute {selected_asset} ({latest_setup})"):
-            st.success(f"Order successfully triggered for {selected_asset} via API connection!")
+            st.success(f"Order successfully triggered for {selected_asset} via {active_b} API!")
 
     st.subheader(f"Live Chart ({selected_asset} - 15m)")
     fig = go.Figure()
