@@ -11,10 +11,10 @@ st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Ter
 # ==============================================================================
 # 🔐 PAID SUBSCRIPTION & ADMIN BYPASS LOCK SYSTEM
 # ==============================================================================
-PAID_ACCESS_PASSWORD = "Smc@setup123"  
+PAID_ACCESS_PASSWORD = "Smc@tools123"  
 MASTER_ADMIN_PASSWORD = "SMC_ALGO"     
 
-st.sidebar.markdown("### 🚀 ")
+st.sidebar.markdown("### 🚀 Alpha Trade School")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 
 st.sidebar.markdown("---")
@@ -227,19 +227,10 @@ if not data.empty:
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Live Market SMC Analytics Table")
-    
-    def color_signals(val):
-        if val == "BULLISH SETUP":
-            return 'background-color: #28a745; color: white; font-weight: bold;'
-        elif val == "BEARISH SETUP":
-            return 'background-color: #dc3545; color: white; font-weight: bold;'
-        else:
-            return 'background-color: #6c757d; color: white;'
 
     st.dataframe(
         data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'Bullish_FVG', 'Bearish_FVG', 'Bullish_OB', 'Bearish_OB', 'Consolidation', 'Setup']]
         .tail(12)
-        .style.applymap(color_signals, subset=['Setup'])
     )
 
     st.markdown("---")
