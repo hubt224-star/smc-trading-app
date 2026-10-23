@@ -7,11 +7,8 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
-# ==============================================================================
-# 🔐 UPDATED PASSWORDS SET HERE
-# ==============================================================================
-PAID_ACCESS_PASSWORD = "Smc@tools"          # Customer password
-MASTER_ADMIN_PASSWORD = "SMCALGO1999"   # Tera admin bypass password
+PAID_ACCESS_PASSWORD = "Smc@tools"
+MASTER_ADMIN_PASSWORD = "SMCALGO1999DAAL"
 
 st.sidebar.markdown("### 🚀 Terminal Access")
 st.sidebar.caption("Mentor: Mr. Yusuf")
@@ -36,8 +33,8 @@ if not is_unlocked:
     
     st.markdown("### 🚀 Pay ₹499 & Get Instant Password Access")
     
-    upi_id = "9199786026@ptyes[span_0](start_span)"[span_0](end_span)
-    payee_name = "Mdaziz Shekh[span_1](start_span)"[span_1](end_span)
+    upi_id = "9199786026@ptyes"
+    payee_name = "Mdaziz Shekh"
     amount = "499"
     
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
