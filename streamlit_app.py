@@ -7,9 +7,6 @@ from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
 
-PAID_ACCESS_PASSWORD = "Smc@tools"
-MASTER_ADMIN_PASSWORD = "SMCALGO@1999"
-
 st.sidebar.markdown("### 🚀 Terminal Access")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 
@@ -17,10 +14,11 @@ st.sidebar.markdown("---")
 st.sidebar.header("🔑 Scanner Access")
 user_pass = st.sidebar.text_input("Enter Scanner Password:", type="password")
 
-is_unlocked = (user_pass == PAID_ACCESS_PASSWORD) or (user_pass == MASTER_ADMIN_PASSWORD)
+# Direct password check
+is_unlocked = (user_pass == "Smc@tools") or (user_pass == "SMCALGO@1999")
 
 if is_unlocked:
-    if user_pass == MASTER_ADMIN_PASSWORD:
+    if user_pass == "SMCALGO@1999":
         st.sidebar.success("👨‍💻 Admin Access Active (Bypassed)")
     else:
         st.sidebar.success("✅ Scanner Unlocked")
@@ -38,7 +36,7 @@ if not is_unlocked:
     amount = "499"
     
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
-
+    
     col1, col2 = st.columns([1, 1.2])
     
     with col1:
