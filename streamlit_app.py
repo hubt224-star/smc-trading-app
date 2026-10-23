@@ -6,16 +6,12 @@ import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 
 # 1. Page Config (MUST BE FIRST STREAMLIT COMMAND)
-st.set_page_config(
-    page_title="Alpha Trade School - Institutional Terminal",
-    page_icon="🚀",
-    layout="wide"
-)
+st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Terminal", layout="wide")
 
 # ==============================================================================
-# 🔐 LOGIN / PASSWORD PROTECTION SYSTEM
+# 🔒 LOGIN / PASSWORD PROTECTION SYSTEM
 # ==============================================================================
-APP_PASSWORD = "Mysecretpassword@1990"  # Change password as needed
+APP_PASSWORD = "mysecretpassword123"  # <-- Apne hisab se password yahan change karein
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
@@ -24,146 +20,97 @@ if not st.session_state.authenticated:
     st.title("⚡ Alpha Trade School - Institutional Terminal")
     st.subheader("Login Required to Access App")
     
-    user_pass = st.text_input("Enter Password:", type="password")
-    if st.button("Login"):
+    user_pass = st.text_input("Enter Password to access:", type="password")
+    
+    if st.button("Access App"):
         if user_pass == APP_PASSWORD:
             st.session_state.authenticated = True
-            st.success("Access Granted!")
             st.rerun()
         else:
-            st.error("Incorrect Password!")
-    st.stop()  # Stop execution until user logs in
-
-# ==============================================================================
-# 🚀 MAIN APP INTERFACE (Shown only after login)
+            st.error("❌ Incorrect Password! Access Denied.")
+            
+    st.stop()
 # ==============================================================================
 
-# Auto refresh page every 60 seconds for live updates
-st_autorefresh(interval=60000, key="datarefresh")
+# 2. 5-Second Auto-Refresh
+count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
-# ------------------------------------------------------------------------------
-# SIDEBAR NAVIGATION & SETTINGS
-# ------------------------------------------------------------------------------
-with st.sidebar:
-    st.title("🚀 Alpha Trade School")
-    st.caption("Mentor: Mr. Yusuf")
-    
-    if st.button("🔒 Logout"):
-        st.session_state.authenticated = False
-        st.rerun()
+# Sidebar Branding & Controls
+st.sidebar.markdown("### 🚀 Alpha Trade School")
+st.sidebar.caption("Mentor: Mr. Yusuf")
 
-    st.markdown("---")
+if st.sidebar.button("🔒 Logout"):
+    st.session_state.authenticated = False
+    st.rerun()
 
-    # COMPLIANT EDUCATIONAL BANNER (Replaced direct referral trade push)
-    st.info(
-        "💡 **Educational Purpose Only**\n\n"
-        "Open Demat Account with Angel One using Referral Code: **HONNZY** "
-        "to access learning resources & community!"
-    )
+st.sidebar.markdown("---")
 
-    st.markdown("---")
-    
-    st.subheader("Market Selection")
-    
-    asset_category = st.selectbox(
-        "Select Asset Category",
-        ["NSE Index / F&O", "MCX Commodities", "US Equities", "Custom Ticker"]
-    )
-    
-    # Dynamic Ticker Mapping
-    ticker_dict = {
-        "NSE Index / F&O": {
-            "Nifty 50": "^NSEI",
-            "Bank Nifty": "^NSEBANK",
-            "Finnifty": "NIFTY_FIN_SERVICE.NS",
-            "Sensex": "^BSESN"
-        },
-        "MCX Commodities": {
-            "Gold": "GC=F",
-            "Silver": "SI=F",
-            "Crude Oil": "CL=F",
-            "Natural Gas": "NG=F"
-        }
-    }
-    
-    selected_symbol = "Nifty 50"
-    symbol_code = "^NSEI"
-
-    if asset_category in ticker_dict:
-        selected_symbol = st.selectbox("Select Symbol", list(ticker_dict[asset_category].keys()))
-        symbol_code = ticker_dict[asset_category][selected_symbol]
-    
-    custom_ticker = st.text_input("Custom Yahoo Ticker:", placeholder="e.g. RELIANCE.NS")
-    if custom_ticker.strip():
-        symbol_code = custom_ticker.strip()
-    
-    timeframe = st.selectbox(
-        "Select Timeframe",
-        ["1m", "5m", "15m", "1h", "4h", "1d"],
-        index=2
-    )
-
-# ------------------------------------------------------------------------------
-# DASHBOARD BODY & DATA FETCHING
-# ------------------------------------------------------------------------------
-st.title(f"📊 Market Analysis: {selected_symbol}")
-
-@st.cache_data(ttl=30)
-def load_market_data(ticker, period="7d", interval="15m"):
-    try:
-        df = yf.download(tickers=ticker, period=period, interval=interval, progress=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-        return df
-    except Exception as e:
-        return None
-
-# Fetching candles
-data_period = "7d" if timeframe in ["1m", "5m", "15m"] else "60d"
-df = load_market_data(symbol_code, period=data_period, interval=timeframe)
-
-if df is not None and not df.empty:
-    # Adding basic Technical Indicators
-    df['EMA_20'] = ta.trend.ema_indicator(df['Close'], window=20)
-    df['EMA_50'] = ta.trend.ema_indicator(df['Close'], window=50)
-    df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
-
-    # Plot Candlestick Chart
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=df.index,
-        open=df['Open'],
-        high=df['High'],
-        low=df['Low'],
-        close=df['Close'],
-        name="Price"
-    ))
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_20'], line=dict(color='orange', width=1), name="EMA 20"))
-    fig.add_trace(go.Scatter(x=df.index, y=df['EMA_50'], line=dict(color='blue', width=1), name="EMA 50"))
-    
-    fig.update_layout(
-        title=f"{symbol_code} Chart ({timeframe})",
-        yaxis_title="Price",
-        xaxis_rangeslider_visible=False,
-        template="plotly_dark",
-        height=600
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Show Data Table
-    with st.expander("View Raw Market Data"):
-        st.dataframe(df.tail(20))
-else:
-    st.warning("Failed to fetch market data or invalid ticker symbol. Please check ticker configuration.")
-
-# ------------------------------------------------------------------------------
-# ⚠️ LEGAL COMPLIANCE DISCLAIMER (SEBI NON-REGISTRATION)
-# ------------------------------------------------------------------------------
-st.markdown("---")
-st.caption(
-    "⚠️ **Disclaimer:** We are not SEBI registered advisors or research analysts. "
-    "All tools, indicators, data, and educational materials provided within this application "
-    "are strictly for educational and informational purposes only. "
-    "No content here should be construed as financial or trading advice."
+# Referral Banner for Monetization (COMPLIANT EDUCATIONAL BANNER)
+st.sidebar.info(
+    "💡 **Educational Purpose Only**\n\n"
+    "Open Demat Account with Angel One using Referral Code: **HONNZY** "
+    "to access learning resources & community!"
 )
+
+st.title("⚡ Alpha Trade School | Institutional SMC Analytics")
+st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
+
+# 3. Multi-Asset Dictionary
+ASSET_DICT = {
+    "NSE Index / F&O": {
+        "Nifty 50": "^NSEI",
+        "Bank Nifty": "^NSEBANK",
+        "Fin Nifty": "NIFTY_FIN_SERVICE.NS"
+    },
+    "BSE Index / F&O": {
+        "Sensex": "^BSESN",
+        "Bankex": "BSE-BANK.BO"
+    },
+    "Equity Stocks (NSE)": {
+        "Reliance": "RELIANCE.NS",
+        "TCS": "TCS.NS",
+        "HDFC Bank": "HDFCBANK.NS",
+        "Tata Motors": "TATAMOTORS.NS"
+    },
+    "Commodities (MCX / Global)": {
+        "Gold Futures": "GC=F",
+        "Silver Futures": "SI=F",
+        "Crude Oil Futures": "CL=F",
+        "Natural Gas": "NG=F"
+    }
+}
+
+# 4. Sidebar Controls
+st.sidebar.header("Market Selection")
+category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
+selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
+ticker = ASSET_DICT[category][selected_asset]
+
+custom_ticker = st.sidebar.text_input("Custom Yahoo Ticker:", "")
+if custom_ticker.strip():
+    ticker = custom_ticker.strip()
+
+timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=1)
+period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
+
+st.sidebar.header("Risk Management")
+capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
+risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
+
+# 5. Fetch Market Data
+data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
+
+if not data.empty:
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
+    data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
+    data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
+    data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
+    
+    data['Order_Flow'] = "NEUTRAL"
+    data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
+    data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
+
+    data['Pivot_High'] =
