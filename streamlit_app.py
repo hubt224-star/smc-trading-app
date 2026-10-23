@@ -11,17 +11,16 @@ st.set_page_config(page_title="Alpha Trade School | Master Institutional SMC Ter
 # ==============================================================================
 # 🔐 PAID SUBSCRIPTION & ADMIN BYPASS LOCK SYSTEM
 # ==============================================================================
-PAID_ACCESS_PASSWORD = "ALPHA_SCANNER_499"  # Jo password tu payment ke baad user ko dega
-MASTER_ADMIN_PASSWORD = "YUSUF_BOSS_786"     # Yeh tera khud ka secret admin password hai (Bina pay kiye use karne ke liye)
+PAID_ACCESS_PASSWORD = "Smc@setup123"  
+MASTER_ADMIN_PASSWORD = "SMC_ALGO"     
 
-st.sidebar.markdown("### 🚀 Alpha Trade School")
+st.sidebar.markdown("### 🚀 ")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Scanner Access")
 user_pass = st.sidebar.text_input("Enter Scanner Password:", type="password")
 
-# Check if password matches user password OR admin master password
 is_unlocked = (user_pass == PAID_ACCESS_PASSWORD) or (user_pass == MASTER_ADMIN_PASSWORD)
 
 if is_unlocked:
@@ -32,19 +31,16 @@ if is_unlocked:
 else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
-# Check Authentication - Agar unlock nahi hai toh locking screen dikhao
 if not is_unlocked:
     st.title("⚡ Alpha Trade School | Institutional SMC Terminal")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
     st.markdown("### 🚀 Pay ₹499 & Get Instant Password Access")
     
-    # UPI Details
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
     amount = "499"
     
-    # Dynamic 499 INR QR Code Generation
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
     
     col1, col2 = st.columns([1, 1.2])
@@ -72,19 +68,17 @@ if not is_unlocked:
             </a>
             ''', unsafe_allow_html=True)
             
-    st.stop()  # Stop execution here until unlocked
+    st.stop()
 
 # ==============================================================================
 # 📊 UNLOCKED APP / MAIN TERMINAL CODE
 # ==============================================================================
 
-# 2. 5-Second Auto-Refresh
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
 st.title("⚡ Alpha Trade School | Institutional SMC Analytics")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
 
-# 3. Multi-Asset Dictionary
 ASSET_DICT = {
     "NSE Index / F&O": {
         "Nifty 50": "^NSEI",
@@ -109,7 +103,6 @@ ASSET_DICT = {
     }
 }
 
-# 4. Sidebar Controls
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -126,7 +119,6 @@ st.sidebar.header("Risk Management")
 capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
 risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
 
-# 5. Fetch Market Data
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
 if not data.empty:
@@ -247,7 +239,7 @@ if not data.empty:
     st.dataframe(
         data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'Bullish_FVG', 'Bearish_FVG', 'Bullish_OB', 'Bearish_OB', 'Consolidation', 'Setup']]
         .tail(12)
-        .style.map(color_signals, subset=['Setup'])
+        .style.applymap(color_signals, subset=['Setup'])
     )
 
     st.markdown("---")
