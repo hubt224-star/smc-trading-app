@@ -214,17 +214,34 @@ if not data.empty:
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
+    # --- CUSTOM HTML SETUP STATUS DISPLAY (GREEN/RED/YELLOW) ---
     if latest_setup == "BULLISH SETUP":
-        row1_2.success(f"**SETUP: {latest_setup}**")
+        row1_2.markdown(
+            f"""<div style="background-color:#0e3a1f; color:#2ecc71; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #2ecc71; font-size:16px;">
+            🚀 {latest_setup}
+            </div>""", unsafe_allow_html=True
+        )
         st.components.v1.html(buy_sound_js, height=0)
     elif latest_setup == "BEARISH SETUP":
-        row1_2.error(f"**SETUP: {latest_setup}**")
+        row1_2.markdown(
+            f"""<div style="background-color:#3a0e0e; color:#e74c3c; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #e74c3c; font-size:16px;">
+            🔻 {latest_setup}
+            </div>""", unsafe_allow_html=True
+        )
         st.components.v1.html(sell_sound_js, height=0)
     else:
         if is_consolidating:
-            row1_2.warning("**CONSOLIDATION PHASE**")
+            row1_2.markdown(
+                f"""<div style="background-color:#3a320e; color:#f1c40f; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #f1c40f; font-size:16px;">
+                ⚠️ CONSOLIDATION PHASE
+                </div>""", unsafe_allow_html=True
+            )
         else:
-            row1_2.warning(f"**SETUP: {latest_setup}**")
+            row1_2.markdown(
+                f"""<div style="background-color:#2c3e50; color:#bdc3c7; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #7f8c8d; font-size:16px;">
+                ⏳ {latest_setup}
+                </div>""", unsafe_allow_html=True
+            )
         
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
