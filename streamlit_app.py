@@ -4,9 +4,13 @@ import pandas as pd
 import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
+from streamlit_local_storage import LocalStorage
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
+
+# Local Storage Initialization
+localS = LocalStorage()
 
 # Sidebar Configuration
 st.sidebar.markdown("### 🚀 Terminal Access")
@@ -20,6 +24,13 @@ if "authenticated" not in st.session_state:
 
 if "broker_connected" not in st.session_state:
     st.session_state["broker_connected"] = False
+
+# Retrieve stored credentials if not in session state
+if "saved_client_id" not in st.session_state:
+    st.session_state["saved_client_id"] = localS.getItem("angel_client_id") or ""
+
+if "saved_api_key" not in st.session_state:
+    st.session_state["saved_api_key"] = localS.getItem("angel_api_key") or ""
 
 # Password Form
 with st.sidebar.form(key="login_form"):
@@ -89,13 +100,19 @@ st.sidebar.header("🔌 Multi-Broker Connect")
 
 selected_broker = st.sidebar.selectbox("Select Your Broker", ["Angel One", "Zerodha (Kite)", "Upstox", "Groww", "Other API"])
 
-with st.sidebar.expander(f"Connect {selected_broker} Account"):
-    client_id_input = st.text_input("Client ID / User ID", type="default")
-    api_key_input = st.text_input("API Key / App ID", type="default")
+with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=True):
+    client_id_input = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"])
+    api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"])
     api_secret_input = st.text_input("API Secret / Password / MPIN", type="password")
     
     if st.button("Connect Demat Account"):
         if client_id_input and api_key_input:
+            # Save credentials to browser local storage
+            localS.setItem("angel_client_id", client_id_input)
+            localS.setItem("angel_api_key", api_key_input)
+            st.session_state["saved_client_id"] = client_id_input
+            st.session_state["saved_api_key"] = api_key_input
+            
             st.session_state['broker_connected'] = True
             st.session_state['active_broker'] = selected_broker
             st.sidebar.success(f"✅ Connected to {selected_broker} Successfully!")
@@ -284,7 +301,6 @@ if not data.empty:
 
     st.subheader("Live Market SMC Analytics Table")
 
-    # --- COLOR HIGHLIGHTING FOR TABLE SETUP COLUMN ---
     def color_table_setup(val):
         if val == "BULLISH SETUP":
             return 'background-color: #0e3a1f; color: #2ecc71; font-weight: bold;'
