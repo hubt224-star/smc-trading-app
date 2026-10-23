@@ -38,7 +38,7 @@ if not is_unlocked:
     amount = "499"
     
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
-    
+
     col1, col2 = st.columns([1, 1.2])
     
     with col1:
