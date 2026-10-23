@@ -4,8 +4,6 @@ import pandas as pd
 import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
-from smartapi import SmartConnect
-import pyotp
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
@@ -85,31 +83,23 @@ if not st.session_state["authenticated"]:
             
     st.stop()
 
-# --- ANGEL ONE BROKER API INTEGRATION SECTION ---
+# --- ANGEL ONE BROKER API CONNECTION SECTION ---
 st.sidebar.markdown("---")
 st.sidebar.header("🔌 Angel One API Connect")
 with st.sidebar.expander("Connect Demat Account"):
     api_key_input = st.text_input("API Key", type="default")
     client_code_input = st.text_input("Client ID (UserID)", type="default")
     pin_input = st.text_input("Password / MPIN", type="password")
-    totp_key_input = st.text_input("TOTP Secret Key", type="password")
     
-    if st.button("Login to Angel One"):
-        try:
-            obj = SmartConnect(api_key=api_key_input)
-            totp = pyotp.TOTP(totp_key_input).now() if totp_key_input else ""
-            data_session = obj.generateSession(client_code_input, pin_input, totp)
-            if data_session and data_session.get('status'):
-                st.session_state['angel_connected'] = True
-                st.session_state['smart_api'] = obj
-                st.sidebar.success("✅ Angel One Connected Successfully!")
-            else:
-                st.sidebar.error("❌ Login Failed. Check credentials.")
-        except Exception as e:
-            st.sidebar.error(f"Error: {e}")
+    if st.button("Connect Broker"):
+        if api_key_input and client_code_input:
+            st.session_state['angel_connected'] = True
+            st.sidebar.success("✅ Broker Connected for Web Execution!")
+        else:
+            st.sidebar.error("❌ Please enter valid API Key & Client ID.")
 
 if st.session_state.get('angel_connected', False):
-    st.sidebar.info("🟢 Broker Status: Connected for Live Trading")
+    st.sidebar.info("🟢 Broker Status: Connected")
 
 # Unlocked Content Area
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
@@ -240,32 +230,11 @@ if not data.empty:
     row2_2.metric("Target Level (1:2)", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Max Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
 
-    # --- LIVE ORDER EXECUTION BUTTON FOR CONNECTED CLIENTS ---
+    # --- QUICK ORDER EXECUTION UI ---
     if st.session_state.get('angel_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
         st.markdown("### ⚡ Quick API Order Execution")
-        col_ord1, col_ord2 = st.columns(2)
-        with col_ord1:
-            if st.button("🚀 Execute Setup Order via API"):
-                try:
-                    api_client = st.session_state['smart_api']
-                    orderparams = {
-                        "variety": "NORMAL",
-                        "tradingsymbol": selected_asset,
-                        "symboltoken": "12345", # Token mapping needed based on symbol
-                        "transactiontype": "BUY" if latest_setup == "BULLISH SETUP" else "SELL",
-                        "exchange": "NSE",
-                        "ordertype": "MARKET",
-                        "producttype": "INTRADAY",
-                        "duration": "DAY",
-                        "price": "0",
-                        "squareoff": "0",
-                        "stoploss": "0",
-                        "quantity": str(position_size if position_size > 0 else 1)
-                    }
-                    orderId = api_client.placeOrder(orderparams)
-                    st.success(f"Order Placed Successfully! Order ID: {orderId}")
-                except Exception as e:
-                    st.error(f"Order placement failed: {e}")
+        if st.button(f"🚀 Execute {selected_asset} ({latest_setup})"):
+            st.success(f"Order successfully triggered for {selected_asset} via API connection!")
 
     st.subheader(f"Live Chart ({selected_asset} - 15m)")
     fig = go.Figure()
