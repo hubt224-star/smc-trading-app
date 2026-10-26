@@ -1,4 +1,6 @@
 streamlit
-streamlit-local-storage
-extra-streamlit-components
-smartapi-python
+yfinance
+pandas
+ta
+plotly
+streamlit-autorefresh
