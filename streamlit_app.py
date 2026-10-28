@@ -106,7 +106,6 @@ with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=True):
             st.session_state["saved_client_id"] = client_id_input
             st.session_state["saved_api_key"] = api_key_input
             
-            # Browser localStorage me safe save karna JS ke dwara
             js_save = f"""
             <script>
             localStorage.setItem('angel_client_id', '{client_id_input}');
@@ -129,6 +128,19 @@ count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
 st.title("⚡ Institutional SMC Analytics Terminal")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
+
+# Asset Details Dictionary with Step Size and Lot Size
+ASSET_METADATA = {
+    "^NSEI": {"name": "Nifty 50", "step": 50, "lot": 25, "type": "index"},
+    "^NSEBANK": {"name": "Bank Nifty", "step": 100, "lot": 15, "type": "index"},
+    "NIFTY_FIN_SERVICE.NS": {"name": "Fin Nifty", "step": 50, "lot": 25, "type": "index"},
+    "^BSESN": {"name": "Sensex", "step": 100, "lot": 10, "type": "index"},
+    "BSE-BANK.BO": {"name": "Bankex", "step": 100, "lot": 15, "type": "index"},
+    "RELIANCE.NS": {"name": "Reliance", "step": 20, "lot": 250, "type": "stock"},
+    "TCS.NS": {"name": "TCS", "step": 50, "lot": 175, "type": "stock"},
+    "HDFCBANK.NS": {"name": "HDFC Bank", "step": 10, "lot": 550, "type": "stock"},
+    "TATAMOTORS.NS": {"name": "Tata Motors", "step": 10, "lot": 550, "type": "stock"}
+}
 
 ASSET_DICT = {
     "NSE Index / F&O": {
@@ -169,6 +181,10 @@ period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
 st.sidebar.header("Risk Management")
 capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
 risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
+
+# Option Strike Preference
+st.sidebar.header("🎯 Strike Mapping View")
+strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)", "ITM 1 (In The Money)", "OTM 1 (Out of The Money)"])
 
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
@@ -227,8 +243,9 @@ if not data.empty:
     else:
         sl, target, position_size = 0.0, 0.0, 0
 
+    # Top Metric Bar
     row1_1, row1_2, row1_3, row1_4 = st.columns(4)
-    row1_1.metric("Current Price", f"₹ {latest_price:.2f}")
+    row1_1.metric("Current Spot Price", f"₹ {latest_price:.2f}")
     
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
@@ -264,18 +281,71 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
+    # --- 🎯 STRIKE PRICE MAPPING ENGINE ---
+    meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "type": "index"})
+    step = meta["step"]
+    lot_size = meta["lot"]
+    
+    atm_strike = round(latest_price / step) * step
+    
+    mapped_strike = atm_strike
+    contract_type = "CE" if latest_setup == "BULLISH SETUP" else ("PE" if latest_setup == "BEARISH SETUP" else "CE/PE")
+    
+    if latest_setup == "BULLISH SETUP":
+        if "ITM" in strike_type:
+            mapped_strike = atm_strike - step
+        elif "OTM" in strike_type:
+            mapped_strike = atm_strike + step
+    elif latest_setup == "BEARISH SETUP":
+        if "ITM" in strike_type:
+            mapped_strike = atm_strike + step
+        elif "OTM" in strike_type:
+            mapped_strike = atm_strike - step
+
+    total_lots = max(1, position_size // lot_size) if position_size > 0 else 0
+
+    st.markdown("---")
+    st.markdown("### 📊 Educational Options Scenario Mapping")
+    
+    opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
+    
+    if latest_setup == "BULLISH SETUP":
+        opt_col1.markdown(f"""
+        <div style="background-color:#143d22; border: 2px solid #2ecc71; padding:10px; border-radius:8px; text-align:center;">
+            <span style="color:#2ecc71; font-size:12px; font-weight:bold;">EDUCATIONAL CE VIEW</span>
+            <h2 style="color:#ffffff; margin:0;">{mapped_strike} CE</h2>
+            <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
+        </div>
+        """, unsafe_allow_html=True)
+    elif latest_setup == "BEARISH SETUP":
+        opt_col1.markdown(f"""
+        <div style="background-color:#3d1414; border: 2px solid #e74c3c; padding:10px; border-radius:8px; text-align:center;">
+            <span style="color:#e74c3c; font-size:12px; font-weight:bold;">EDUCATIONAL PE VIEW</span>
+            <h2 style="color:#ffffff; margin:0;">{mapped_strike} PE</h2>
+            <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        opt_col1.info("⏳ Waiting for Market Setup...")
+
+    opt_col2.metric("Spot Stop-Loss", f"₹ {sl:.2f}" if sl > 0 else "N/A")
+    opt_col3.metric("Spot Target (1:2)", f"₹ {target:.2f}" if target > 0 else "N/A")
+    opt_col4.metric("Position Sizing Model", f"{total_lots} Lots ({total_lots * lot_size} Qty)" if total_lots > 0 else "N/A")
+
+    st.markdown("---")
+
     row2_1, row2_2, row2_3 = st.columns(3)
-    row2_1.metric("Est. Stop-Loss Level", f"{sl:.2f}" if sl > 0 else "N/A")
-    row2_2.metric("Target Level (1:2)", f"{target:.2f}" if target > 0 else "N/A")
-    row2_3.metric("Max Rec. Quantity", f"{position_size} Qty" if position_size > 0 else "N/A")
+    row2_1.metric("Est. Spot Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
+    row2_2.metric("Est. Spot Target", f"{target:.2f}" if target > 0 else "N/A")
+    row2_3.metric("Max Quantity Model", f"{position_size} Qty" if position_size > 0 else "N/A")
 
     if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
         active_b = st.session_state.get('active_broker', 'Broker')
-        st.markdown(f"### ⚡ Quick Order Execution via {active_b}")
-        if st.button(f"🚀 Execute {selected_asset} ({latest_setup})", key="exec_trade_btn"):
-            st.success(f"Order successfully triggered for {selected_asset} via {active_b} API!")
+        st.markdown(f"### ⚡ Broker Integration Sandbox ({active_b})")
+        if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
+            st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-    st.subheader(f"Live Chart ({selected_asset} - 15m)")
+    st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
     fig = go.Figure()
     fig.add_trace(go.Candlestick(
         x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
