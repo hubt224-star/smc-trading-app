@@ -129,17 +129,17 @@ count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 st.title("⚡ Institutional SMC Analytics Terminal")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
 
-# Asset Details Dictionary with Step Size and Lot Size
+# Asset Details Dictionary with Step Size, Lot Size, and TradingView Symbol Mapping
 ASSET_METADATA = {
-    "^NSEI": {"name": "Nifty 50", "step": 50, "lot": 25, "type": "index"},
-    "^NSEBANK": {"name": "Bank Nifty", "step": 100, "lot": 15, "type": "index"},
-    "NIFTY_FIN_SERVICE.NS": {"name": "Fin Nifty", "step": 50, "lot": 25, "type": "index"},
-    "^BSESN": {"name": "Sensex", "step": 100, "lot": 10, "type": "index"},
-    "BSE-BANK.BO": {"name": "Bankex", "step": 100, "lot": 15, "type": "index"},
-    "RELIANCE.NS": {"name": "Reliance", "step": 20, "lot": 250, "type": "stock"},
-    "TCS.NS": {"name": "TCS", "step": 50, "lot": 175, "type": "stock"},
-    "HDFCBANK.NS": {"name": "HDFC Bank", "step": 10, "lot": 550, "type": "stock"},
-    "TATAMOTORS.NS": {"name": "Tata Motors", "step": 10, "lot": 550, "type": "stock"}
+    "^NSEI": {"name": "Nifty 50", "step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"},
+    "^NSEBANK": {"name": "Bank Nifty", "step": 100, "lot": 15, "tv_symbol": "NSE:BANKNIFTY"},
+    "NIFTY_FIN_SERVICE.NS": {"name": "Fin Nifty", "step": 50, "lot": 25, "tv_symbol": "NSE:FINNIFTY"},
+    "^BSESN": {"name": "Sensex", "step": 100, "lot": 10, "tv_symbol": "BSE:SENSEX"},
+    "BSE-BANK.BO": {"name": "Bankex", "step": 100, "lot": 15, "tv_symbol": "BSE:BANKEX"},
+    "RELIANCE.NS": {"name": "Reliance", "step": 20, "lot": 250, "tv_symbol": "NSE:RELIANCE"},
+    "TCS.NS": {"name": "TCS", "step": 50, "lot": 175, "tv_symbol": "NSE:TCS"},
+    "HDFCBANK.NS": {"name": "HDFC Bank", "step": 10, "lot": 550, "tv_symbol": "NSE:HDFCBANK"},
+    "TATAMOTORS.NS": {"name": "Tata Motors", "step": 10, "lot": 550, "tv_symbol": "NSE:TATAMOTORS"}
 }
 
 ASSET_DICT = {
@@ -185,6 +185,9 @@ risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
 # Option Strike Preference
 st.sidebar.header("🎯 Strike Mapping View")
 strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)", "ITM 1 (In The Money)", "OTM 1 (Out of The Money)"])
+
+# Timeframe Map for TradingView Widget
+tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
 
@@ -282,9 +285,10 @@ if not data.empty:
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
     # --- 🎯 STRIKE PRICE MAPPING ENGINE ---
-    meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "type": "index"})
+    meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
     step = meta["step"]
     lot_size = meta["lot"]
+    tv_symbol = meta["tv_symbol"]
     
     atm_strike = round(latest_price / step) * step
     
@@ -345,29 +349,59 @@ if not data.empty:
         if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
             st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
+    # --- LIVE CHART ENGINE SWITCH (BSE SEAMLESS TRADINGVIEW INTEGRATION) ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
-    fig = go.Figure()
-    fig.add_trace(go.Candlestick(
-        x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
-    ))
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
-    ))
-    fig.add_trace(go.Scatter(
-        x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
-    ))
     
-    if latest_setup != "NEUTRAL / NO SETUP":
-        fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
-        fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
+    if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
+        st.success("⚡ **BSE Real-Time Data Active:** Streaming live 0-sec tick feeds via TradingView Engine.")
+        tv_html = f"""
+        <!-- TradingView Widget BEGIN -->
+        <div class="tradingview-widget-container" style="height:500px;width:100%;">
+          <div id="tradingview_bse_chart" style="height:500px;width:100%;"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+          <script type="text/javascript">
+          new TradingView.widget({{
+            "autosize": true,
+            "symbol": "{tv_symbol}",
+            "interval": "{tv_tf_map.get(timeframe, '15')}",
+            "timezone": "Asia/Kolkata",
+            "theme": "dark",
+            "style": "1",
+            "locale": "in",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "hide_legend": false,
+            "save_image": false,
+            "container_id": "tradingview_bse_chart"
+          }});
+          </script>
+        </div>
+        <!-- TradingView Widget END -->
+        """
+        components.html(tv_html, height=520)
+    else:
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
+        ))
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
+        ))
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
+        ))
+        
+        if latest_setup != "NEUTRAL / NO SETUP":
+            fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
+            fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
 
-    fig.update_layout(
-        xaxis_rangeslider_visible=False,
-        template="plotly_dark",
-        height=480,
-        margin=dict(l=10, r=10, t=30, b=10)
-    )
-    st.plotly_chart(fig, use_container_width=True)
+        fig.update_layout(
+            xaxis_rangeslider_visible=False,
+            template="plotly_dark",
+            height=480,
+            margin=dict(l=10, r=10, t=30, b=10)
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Live Market SMC Analytics Table")
 
