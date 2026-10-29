@@ -17,7 +17,7 @@ CLIENTS_FILE = "clients.json"
 if not os.path.exists(CLIENTS_FILE):
     default_clients = {
         "admin": {"name": "Mr. Yusuf (Admin)", "password": "SMCALGO@1999", "active": True, "admin": True},
-        "9824467482": {"name": "Client User 1", "password": "Smc@tools", "active": True, "admin": False}
+        "9824467482": {"name": "Client User 1", "password": "Smc@tools1990", "active": True, "admin": False}
     }
     with open(CLIENTS_FILE, "w") as f:
         json.dump(default_clients, f, indent=4)
