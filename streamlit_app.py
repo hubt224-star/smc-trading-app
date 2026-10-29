@@ -106,6 +106,20 @@ if st.session_state["authenticated"]:
                     st.error("⚠️ Fill all fields!")
             
             st.markdown("---")
+            st.markdown("**Remove / Delete Client**")
+            non_admin_clients = [k for k in clients_db.keys() if k != "admin"]
+            if non_admin_clients:
+                client_to_remove = st.selectbox("Select Client to Remove", non_admin_clients)
+                if st.button("Delete Selected Client"):
+                    if client_to_remove in clients_db:
+                        del clients_db[client_to_remove]
+                        save_clients(clients_db)
+                        st.success(f"✅ Client {client_to_remove} removed successfully!")
+                        st.rerun()
+            else:
+                st.caption("No custom clients found.")
+            
+            st.markdown("---")
             st.markdown(f"**Total Registered Clients:** {len(clients_db)}")
     else:
         st.sidebar.success(f"✅ Welcome, {client_display}")
