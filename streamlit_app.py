@@ -5,15 +5,37 @@ import ta
 import plotly.graph_objects as go
 from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
+import json
+import os
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
+
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP ---
+CLIENTS_FILE = "clients.json"
+
+if not os.path.exists(CLIENTS_FILE):
+    default_clients = {
+        "admin": {"name": "Mr. Yusuf (Admin)", "password": "SMCALGO@1999", "active": True, "admin": True},
+        "9824467482": {"name": "Client User 1", "password": "Smc@tools", "active": True, "admin": False}
+    }
+    with open(CLIENTS_FILE, "w") as f:
+        json.dump(default_clients, f, indent=4)
+
+def load_clients():
+    try:
+        with open(CLIENTS_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+clients_db = load_clients()
 
 # Sidebar Configuration
 st.sidebar.markdown("### 🚀 Terminal Access")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 st.sidebar.markdown("---")
-st.sidebar.header("🔑 Scanner Access")
+st.sidebar.header("🔑 Unique Client Login")
 
 # Session State Initialization
 if "authenticated" not in st.session_state:
@@ -28,25 +50,37 @@ if "saved_client_id" not in st.session_state:
 if "saved_api_key" not in st.session_state:
     st.session_state["saved_api_key"] = ""
 
-# Password Form
+# Unique Client Login Form
 with st.sidebar.form(key="login_form"):
-    user_pass = st.text_input("Enter Scanner Password:", type="password")
+    client_id_input = st.text_input("Client ID / Phone Number:")
+    user_pass = st.text_input("Enter Secret Password:", type="password")
     submit_button = st.form_submit_button(label="Unlock Terminal")
 
 if submit_button:
-    if user_pass == "Smc@tools" or user_pass == "SMCALGO@1999":
+    # Master Admin Bypass
+    if user_pass == "SMCALGO@1999" and client_id_input.lower() == "admin":
         st.session_state["authenticated"] = True
-        st.session_state["admin_mode"] = (user_pass == "SMCALGO@1999")
+        st.session_state["admin_mode"] = True
+        st.session_state["client_name"] = "Mr. Yusuf (Admin)"
+    elif client_id_input in clients_db and clients_db[client_id_input]["password"] == user_pass:
+        if clients_db[client_id_input].get("active", True):
+            st.session_state["authenticated"] = True
+            st.session_state["admin_mode"] = clients_db[client_id_input].get("admin", False)
+            st.session_state["client_name"] = clients_db[client_id_input]["name"]
+        else:
+            st.session_state["authenticated"] = False
+            st.sidebar.error("❌ Your subscription has expired or account is blocked!")
     else:
         st.session_state["authenticated"] = False
-        st.sidebar.error("❌ Incorrect Password!")
+        st.sidebar.error("❌ Incorrect Client ID or Password!")
 
 # Authentication Status UI
 if st.session_state["authenticated"]:
+    client_display = st.session_state.get("client_name", "Authorized User")
     if st.session_state.get("admin_mode", False):
-        st.sidebar.success("👨‍💻 Admin Access Active (Bypassed)")
+        st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
     else:
-        st.sidebar.success("✅ Scanner Unlocked")
+        st.sidebar.success(f"✅ Welcome, {client_display}")
 else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
@@ -55,7 +89,7 @@ if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
-    st.markdown("### 🚀 Pay ₹499 & Get Instant Password Access")
+    st.markdown("### 🚀 Pay ₹499 & Get Instant Unique Password Access")
     
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
@@ -73,11 +107,11 @@ if not st.session_state["authenticated"]:
         **Steps to unlock access:**
         1. Scan the QR code using any UPI app.
         2. Pay **₹{amount}**.
-        3. Click the button below to send payment screenshot on WhatsApp.
-        4. Enter the password received on WhatsApp in the **Sidebar** to unlock!
+        3. Click the button below to send payment screenshot & your phone number on WhatsApp.
+        4. Enter your assigned **Client ID & Password** in the **Sidebar** to unlock!
         """)
         
-        wa_text = "Bhai%20maine%20499%20pay%20kar%20diya%20hai,%20scanner%20ka%20password%20dedo."
+        wa_text = "Bhai%20maine%20499%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
         
         st.markdown(f'''
@@ -97,18 +131,18 @@ st.sidebar.header("🔌 Multi-Broker Connect")
 selected_broker = st.sidebar.selectbox("Select Your Broker", ["Angel One", "Zerodha (Kite)", "Upstox", "Groww", "Other API"])
 
 with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=True):
-    client_id_input = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"], key="client_id_field")
+    client_id_input_broker = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"], key="client_id_field")
     api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"], key="api_key_field")
     api_secret_input = st.text_input("API Secret / Password / MPIN", type="password", key="api_secret_field")
     
     if st.button("Connect Demat Account", key="connect_demat_btn"):
-        if client_id_input and api_key_input:
-            st.session_state["saved_client_id"] = client_id_input
+        if client_id_input_broker and api_key_input:
+            st.session_state["saved_client_id"] = client_id_input_broker
             st.session_state["saved_api_key"] = api_key_input
             
             js_save = f"""
             <script>
-            localStorage.setItem('angel_client_id', '{client_id_input}');
+            localStorage.setItem('angel_client_id', '{client_id_input_broker}');
             localStorage.setItem('angel_api_key', '{api_key_input}');
             </script>
             """
