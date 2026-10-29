@@ -29,6 +29,10 @@ def load_clients():
     except:
         return {}
 
+def save_clients(data):
+    with open(CLIENTS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
 clients_db = load_clients()
 
 # Sidebar Configuration
@@ -79,6 +83,30 @@ if st.session_state["authenticated"]:
     client_display = st.session_state.get("client_name", "Authorized User")
     if st.session_state.get("admin_mode", False):
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
+        
+        # --- APP-BASED ADMIN CLIENT MANAGER ---
+        with st.sidebar.expander("🛠️ Admin Client Manager"):
+            st.markdown("**Add New Client**")
+            new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
+            new_name = st.text_input("Client Name", key="new_client_name")
+            new_pass = st.text_input("Assign Password", key="new_client_pass")
+            
+            if st.button("Add Client to DB"):
+                if new_phone and new_name and new_pass:
+                    clients_db[new_phone] = {
+                        "name": new_name,
+                        "password": new_pass,
+                        "active": True,
+                        "admin": False
+                    }
+                    save_clients(clients_db)
+                    st.success(f"✅ Client {new_name} added successfully!")
+                    st.rerun()
+                else:
+                    st.error("⚠️ Fill all fields!")
+            
+            st.markdown("---")
+            st.markdown(f"**Total Registered Clients:** {len(clients_db)}")
     else:
         st.sidebar.success(f"✅ Welcome, {client_display}")
 else:
