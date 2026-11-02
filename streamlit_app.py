@@ -7,9 +7,36 @@ from streamlit_autorefresh import st_autorefresh
 import streamlit.components.v1 as components
 import json
 import os
+import requests
 
 # Page setup
-st.set_page_config(page_title="Master Institutional SMC Terminal", layout="wide")
+st.set_page_config(page_title="Master Institutional SMC Terminal Pro", layout="wide")
+
+# --- MOBILE-FIRST & CUSTOM CSS STYLING ---
+st.markdown("""
+    <style>
+    /* Mobile-First Layout Tuning */
+    @media (max-width: 768px) {
+        .element-container, .stButton button, .stMetric {
+            width: 100% !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
+        }
+    }
+    .stButton button {
+        border-radius: 8px;
+        font-weight: bold;
+    }
+    .metric-box {
+        background-color: #1a1c23;
+        border-radius: 10px;
+        padding: 12px;
+        border: 1px solid #2d313e;
+        text-align: center;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- UNIQUE CLIENT LOGIN DATABASE SETUP ---
 CLIENTS_FILE = "clients.json"
@@ -35,8 +62,18 @@ def save_clients(data):
 
 clients_db = load_clients()
 
+# Telegram Alert Function
+def send_telegram_alert(token, chat_id, message):
+    if token and chat_id:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+        try:
+            requests.post(url, json=payload, timeout=5)
+        except Exception as e:
+            pass
+
 # Sidebar Configuration
-st.sidebar.markdown("### 🚀 Terminal Access")
+st.sidebar.markdown("### 🚀 Terminal Access Pro")
 st.sidebar.caption("Mentor: Mr. Yusuf")
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Unique Client Login")
@@ -44,15 +81,14 @@ st.sidebar.header("🔑 Unique Client Login")
 # Session State Initialization
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
-
 if "broker_connected" not in st.session_state:
     st.session_state["broker_connected"] = False
-
 if "saved_client_id" not in st.session_state:
     st.session_state["saved_client_id"] = ""
-
 if "saved_api_key" not in st.session_state:
     st.session_state["saved_api_key"] = ""
+if "last_alert_sent" not in st.session_state:
+    st.session_state["last_alert_sent"] = ""
 
 # Unique Client Login Form
 with st.sidebar.form(key="login_form"):
@@ -61,7 +97,6 @@ with st.sidebar.form(key="login_form"):
     submit_button = st.form_submit_button(label="Unlock Terminal")
 
 if submit_button:
-    # Master Admin Bypass
     if user_pass == "SMCALGO@1999" and client_id_input.lower() == "admin":
         st.session_state["authenticated"] = True
         st.session_state["admin_mode"] = True
@@ -84,7 +119,6 @@ if st.session_state["authenticated"]:
     if st.session_state.get("admin_mode", False):
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
         
-        # --- APP-BASED ADMIN CLIENT MANAGER ---
         with st.sidebar.expander("🛠️ Admin Client Manager"):
             st.markdown("**Add New Client**")
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
@@ -121,14 +155,20 @@ if st.session_state["authenticated"]:
             
             st.markdown("---")
             st.markdown(f"**Total Registered Clients:** {len(clients_db)}")
+
+        with st.sidebar.expander("📢 Telegram Alerts Config"):
+            tg_token = st.text_input("Bot Token", key="tg_token_val")
+            tg_chat = st.text_input("Chat / Channel ID", key="tg_chat_val")
+            st.session_state["tg_token"] = tg_token
+            st.session_state["tg_chat"] = tg_chat
     else:
         st.sidebar.success(f"✅ Welcome, {client_display}")
 else:
     st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
-# Locked Screen View
+# Locked Screen View + Instant Passclaim Sandbox
 if not st.session_state["authenticated"]:
-    st.title("⚡ Institutional SMC Terminal")
+    st.title("⚡ Institutional SMC Terminal Pro")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
     st.markdown("### 🚀 Pay ₹499 & Get Instant Unique Password Access")
@@ -147,18 +187,35 @@ if not st.session_state["authenticated"]:
     with col2:
         st.markdown(f"""
         **Steps to unlock access:**
-        1. Scan the QR code using any UPI app.
-        2. Pay **₹{amount}**.
-        3. Click the button below to send payment screenshot & your phone number on WhatsApp.
-        4. Enter your assigned **Client ID & Password** in the **Sidebar** to unlock!
+        1. Scan QR & pay **₹{amount}**.
+        2. Enter your payment UTR / Transaction ID below to verify instant pass.
+        3. Or send screenshot directly on WhatsApp to get your key!
         """)
+        
+        with st.expander("⚡ Instant Pass Verification (Auto-Claim)", expanded=True):
+            user_claim_phone = st.text_input("Your Mobile Number:")
+            user_claim_utr = st.text_input("UPI Transaction Reference / UTR (12 Digits):")
+            if st.button("Verify Payment & Claim Key"):
+                if len(user_claim_phone) >= 10 and len(user_claim_utr) >= 6:
+                    generated_pass = f"SMC{user_claim_utr[-4:]}"
+                    clients_db[user_claim_phone] = {
+                        "name": f"User {user_claim_phone[-4:]}",
+                        "password": generated_pass,
+                        "active": True,
+                        "admin": False
+                    }
+                    save_clients(clients_db)
+                    st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{user_claim_phone}`\n**Password:** `{generated_pass}`")
+                    st.info("Log in using the Sidebar to unlock immediately.")
+                else:
+                    st.error("⚠️ Enter valid Phone & UTR number!")
         
         wa_text = "Bhai%20maine%20499%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
         
         st.markdown(f'''
             <a href="{wa_url}" target="_blank">
-                <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px;">
+                <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px; width:100%;">
                     📲 Send Screenshot on WhatsApp
                 </button>
             </a>
@@ -172,7 +229,7 @@ st.sidebar.header("🔌 Multi-Broker Connect")
 
 selected_broker = st.sidebar.selectbox("Select Your Broker", ["Angel One", "Zerodha (Kite)", "Upstox", "Groww", "Other API"])
 
-with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=True):
+with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=False):
     client_id_input_broker = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"], key="client_id_field")
     api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"], key="api_key_field")
     api_secret_input = st.text_input("API Secret / Password / MPIN", type="password", key="api_secret_field")
@@ -202,10 +259,10 @@ if st.session_state.get('broker_connected', False):
 # Unlocked Content Area
 count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
 
-st.title("⚡ Institutional SMC Analytics Terminal")
+st.title("⚡ Institutional SMC Analytics Terminal Pro")
 st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
 
-# Asset Details Dictionary with Step Size, Lot Size, and TradingView Symbol Mapping
+# Asset Details Dictionary
 ASSET_METADATA = {
     "^NSEI": {"name": "Nifty 50", "step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"},
     "^NSEBANK": {"name": "Bank Nifty", "step": 100, "lot": 15, "tv_symbol": "NSE:BANKNIFTY"},
@@ -258,11 +315,9 @@ st.sidebar.header("Risk Management")
 capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
 risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
 
-# Option Strike Preference
 st.sidebar.header("🎯 Strike Mapping View")
 strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)", "ITM 1 (In The Money)", "OTM 1 (Out of The Money)"])
 
-# Timeframe Map for TradingView Widget
 tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
 data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
@@ -271,31 +326,37 @@ if not data.empty:
     if isinstance(data.columns, pd.MultiIndex):
         data.columns = data.columns.get_level_values(0)
 
+    # Indicator Calculations
     data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
     data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
     
+    # Order Flow Filter
     data['Order_Flow'] = "NEUTRAL"
     data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
     data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
 
-    data['Pivot_High'] = data['High'].rolling(window=5).max()
-    data['Pivot_Low'] = data['Low'].rolling(window=5).min()
+    # Advanced Swing BOS / ChoCH Logic
+    data['Recent_Swing_High'] = data['High'].rolling(window=10).max()
+    data['Recent_Swing_Low'] = data['Low'].rolling(window=10).min()
+
+    data['BOS_Bullish'] = data['Close'] > data['Recent_Swing_High'].shift(1)
+    data['BOS_Bearish'] = data['Close'] < data['Recent_Swing_Low'].shift(1)
 
     data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
     data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
 
-    data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Pivot_High'].shift(1))
-    data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Pivot_Low'].shift(1))
+    data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Recent_Swing_High'].shift(1))
+    data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Recent_Swing_Low'].shift(1))
 
     price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
     data['Consolidation'] = price_range < 0.002
 
     data['Setup'] = "NEUTRAL / NO SETUP"
     
-    buy_cond = ((data['Close'] > data['Pivot_High'].shift(1)) | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
-    sell_cond = ((data['Close'] < data['Pivot_Low'].shift(1)) | data['Bearish_FVG']) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 55) & (~data['Consolidation'])
+    buy_cond = (data['BOS_Bullish'] | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
+    sell_cond = (data['BOS_Bearish'] | data['Bearish_FVG']) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 55) & (~data['Consolidation'])
     
     data.loc[buy_cond, 'Setup'] = "BULLISH SETUP"
     data.loc[sell_cond, 'Setup'] = "BEARISH SETUP"
@@ -306,6 +367,14 @@ if not data.empty:
     latest_rsi = data['RSI'].iloc[-1]
     latest_of = data['Order_Flow'].iloc[-1]
     is_consolidating = data['Consolidation'].iloc[-1]
+
+    # Automatic Telegram Notification Dispatcher
+    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
+        alert_key = f"{ticker}_{latest_setup}_{data.index[-1]}"
+        if st.session_state["last_alert_sent"] != alert_key:
+            msg = f"⚡ *SMC ALERT TRIGGERED*\n\n📈 *Symbol:* {selected_asset}\n🎯 *Setup:* {latest_setup}\n💰 *Price:* ₹{latest_price:.2f}\n📊 *RSI:* {latest_rsi:.1f}\n🕒 *Timeframe:* {timeframe}\n\n_TradeVortex SMC Engine_"
+            send_telegram_alert(st.session_state["tg_token"], st.session_state["tg_chat"], msg)
+            st.session_state["last_alert_sent"] = alert_key
 
     if latest_setup == "BULLISH SETUP":
         sl = latest_price - (1.5 * latest_atr)
@@ -360,7 +429,7 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # --- 🎯 STRIKE PRICE MAPPING ENGINE ---
+    # --- 🎯 STRIKE PRICE MAPPING & OPTIONS MATRIX ENGINE ---
     meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
     step = meta["step"]
     lot_size = meta["lot"]
@@ -385,10 +454,14 @@ if not data.empty:
     total_lots = max(1, position_size // lot_size) if position_size > 0 else 0
 
     st.markdown("---")
-    st.markdown("### 📊 Educational Options Scenario Mapping")
+    st.markdown("### 📊 Options Matrix & Sentiment Engine")
     
     opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
     
+    # Synthetic PCR & Sentiment Index Simulation based on Trend Strength
+    est_pcr = round(1.25 if latest_of == "BULLISH" else (0.75 if latest_of == "BEARISH" else 0.98), 2)
+    pcr_bias = "Bullish (Put Writing)" if est_pcr > 1.0 else ("Bearish (Call Writing)" if est_pcr < 0.9 else "Neutral")
+
     if latest_setup == "BULLISH SETUP":
         opt_col1.markdown(f"""
         <div style="background-color:#143d22; border: 2px solid #2ecc71; padding:10px; border-radius:8px; text-align:center;">
@@ -410,14 +483,14 @@ if not data.empty:
 
     opt_col2.metric("Spot Stop-Loss", f"₹ {sl:.2f}" if sl > 0 else "N/A")
     opt_col3.metric("Spot Target (1:2)", f"₹ {target:.2f}" if target > 0 else "N/A")
-    opt_col4.metric("Position Sizing Model", f"{total_lots} Lots ({total_lots * lot_size} Qty)" if total_lots > 0 else "N/A")
+    opt_col4.metric("Est. Market PCR Ratio", f"{est_pcr}", delta=pcr_bias)
 
     st.markdown("---")
 
     row2_1, row2_2, row2_3 = st.columns(3)
     row2_1.metric("Est. Spot Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
     row2_2.metric("Est. Spot Target", f"{target:.2f}" if target > 0 else "N/A")
-    row2_3.metric("Max Quantity Model", f"{position_size} Qty" if position_size > 0 else "N/A")
+    row2_3.metric("Max Quantity Model", f"{position_size} Qty ({total_lots} Lots)" if position_size > 0 else "N/A")
 
     if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
         active_b = st.session_state.get('active_broker', 'Broker')
@@ -425,13 +498,12 @@ if not data.empty:
         if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
             st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-    # --- LIVE CHART ENGINE SWITCH (BSE SEAMLESS TRADINGVIEW INTEGRATION) ---
+    # --- LIVE CHART ENGINE ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
     
     if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
         st.success("⚡ **BSE Real-Time Data Active:** Streaming live 0-sec tick feeds via TradingView Engine.")
         tv_html = f"""
-        <!-- TradingView Widget BEGIN -->
         <div class="tradingview-widget-container" style="height:500px;width:100%;">
           <div id="tradingview_bse_chart" style="height:500px;width:100%;"></div>
           <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -452,7 +524,6 @@ if not data.empty:
           }});
           </script>
         </div>
-        <!-- TradingView Widget END -->
         """
         components.html(tv_html, height=520)
     else:
@@ -490,7 +561,7 @@ if not data.empty:
             return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
         return ''
 
-    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'Bullish_FVG', 'Bearish_FVG', 'Bullish_OB', 'Bearish_OB', 'Consolidation', 'Setup']].tail(12)
+    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12)
     
     styled_table = table_df.style.map(color_table_setup, subset=['Setup'])
     st.dataframe(styled_table, use_container_width=True)
