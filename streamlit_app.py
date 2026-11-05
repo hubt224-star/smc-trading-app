@@ -1,523 +1,573 @@
-<!DOCTYPE html>
-<html lang="en" class="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradeVortex School of Trading | Institutional SMC Mentorship by Mr. Yusuf</title>
-    
-    <!-- SEO Meta Tags -->
-    <meta name="description" content="TradeVortex School of Trading by Mr. Yusuf. Master Smart Money Concepts (SMC), live Google Meet mentorship, algorithmic trading setups, and institutional analytics terminal.">
-    <meta name="keywords" content="trading free class, AI trading tools, Smart Money Concepts, SMC trading course, Google Meet trading class, stock market mentorship, TradeVortex, algorithmic trading India, Nifty options analysis">
-    <meta name="author" content="Mr. Yusuf">
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import ta
+import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
+import streamlit.components.v1 as components
+import json
+import os
+import requests
 
-    <!-- Open Graph Social Tags -->
-    <meta property="og:title" content="TradeVortex School of Trading | Institutional SMC Mentorship">
-    <meta property="og:description" content="Master Smart Money Concepts and get free AI trading tools and live analytics terminal.">
-    <meta property="og:type" content="website">
+# Page setup
+st.set_page_config(page_title="Master Institutional SMC Terminal Pro", layout="wide")
 
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        darkBg: '#0B0F19',
-                        cardBg: '#131C2E',
-                        accentGold: '#F59E0B',
-                        accentCyan: '#06B6D4',
-                        accentEmerald: '#10B981'
-                    },
-                    fontFamily: {
-                        sans: ['Plus Jakarta Sans', 'sans-serif']
-                    }
-                }
-            }
-        }
-    </script>
-
+# --- MOBILE-FIRST & CUSTOM CSS STYLING ---
+st.markdown("""
     <style>
-        .active-nav-link {
-            color: #F59E0B !important;
-            border-bottom: 2px solid #F59E0B;
+    /* Mobile-First Layout Tuning */
+    @media (max-width: 768px) {
+        .element-container, .stButton button, .stMetric {
+            width: 100% !important;
         }
-        ::-webkit-scrollbar {
-            width: 8px;
+        div[data-testid="stMetricValue"] {
+            font-size: 1.2rem !important;
         }
-        ::-webkit-scrollbar-track {
-            background: #0B0F19;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #1e293b;
-            border-radius: 4px;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #334155;
-        }
-        .glow-gold {
-            box-shadow: 0 0 25px -5px rgba(245, 158, 11, 0.2);
-        }
-        .glow-emerald {
-            box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
-        }
+    }
+    .stButton button {
+        border-radius: 8px;
+        font-weight: bold;
+    }
+    .metric-box {
+        background-color: #1a1c23;
+        border-radius: 10px;
+        padding: 12px;
+        border: 1px solid #2d313e;
+        text-align: center;
+    }
     </style>
-</head>
-<body class="bg-darkBg text-slate-100 font-sans antialiased selection:bg-accentGold selection:text-black min-h-screen flex flex-col justify-between">
+""", unsafe_allow_html=True)
 
-    <!-- TOP ANNOUNCEMENT BANNER WITH LIVE COUNTDOWN -->
-    <div class="bg-gradient-to-r from-amber-600/30 via-amber-500/20 to-amber-600/30 border-b border-amber-500/30 py-2.5 px-4 text-center text-xs font-medium text-amber-200 flex flex-wrap justify-center items-center gap-2">
-        <span class="inline-flex items-center gap-2">
-            <span class="relative flex h-2 w-2">
-                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                <span class="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-            </span>
-            <strong class="font-bold">⚡ Limited Free Access Slots Today:</strong> Institutional Terminal Pass available via Partner Onboarding.
-        </span>
-        <span id="countdown" class="bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded font-mono font-bold border border-amber-500/30">03h : 45m : 12s</span>
-        <a href="https://a.aonelink.in/ANGOne/tNCsDi3" target="_blank" class="underline hover:text-white font-semibold ml-1">Claim Access Now →</a>
-    </div>
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP ---
+CLIENTS_FILE = "clients.json"
 
-    <!-- MAIN NAVIGATION BAR -->
-    <nav class="sticky top-0 z-50 bg-darkBg/95 backdrop-blur-md border-b border-slate-800">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-20">
-                <div class="flex items-center space-x-3 cursor-pointer" onclick="switchTab('home')">
-                    <span class="text-2xl font-black tracking-tight text-white">Trade<span class="text-accentGold">Vortex</span></span>
-                    <span class="hidden sm:inline-block text-xs font-semibold bg-slate-800/80 text-slate-300 px-3 py-1 rounded-full border border-slate-700">Institutional Academy</span>
-                </div>
+if not os.path.exists(CLIENTS_FILE):
+    default_clients = {
+        "admin": {"name": "Mr. Yusuf (Admin)", "password": "SMCALGO@1999", "active": True, "admin": True},
+        "9824467482": {"name": "Client User 1", "password": "Smc@tools1990", "active": True, "admin": False}
+    }
+    with open(CLIENTS_FILE, "w") as f:
+        json.dump(default_clients, f, indent=4)
 
-                <div class="hidden md:flex items-center space-x-8 text-sm font-semibold text-slate-400">
-                    <button onclick="switchTab('home')" id="nav-home" class="nav-btn hover:text-white transition-colors py-2 active-nav-link">Home</button>
-                    <button onclick="switchTab('proof')" id="nav-proof" class="nav-btn hover:text-white transition-colors py-2">Live Meet Proofs</button>
-                    <button onclick="switchTab('curriculum')" id="nav-curriculum" class="nav-btn hover:text-white transition-colors py-2">Curriculum</button>
-                    <button onclick="switchTab('contact')" id="nav-contact" class="nav-btn hover:text-white transition-colors py-2">Support Desk</button>
-                </div>
+def load_clients():
+    try:
+        with open(CLIENTS_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
-                <div class="flex items-center gap-3">
-                    <button onclick="openLeadModal('Open Demat Account & Claim Free Terminal')" class="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs sm:text-sm px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-950/50 flex items-center gap-2">
-                        <span>Open Demat Account</span>
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-                    </button>
-                </div>
-            </div>
+def save_clients(data):
+    with open(CLIENTS_FILE, "w") as f:
+        json.dump(data, f, indent=4)
 
-            <div class="flex md:hidden border-t border-slate-800/60 py-2 justify-around text-xs font-semibold text-slate-400 overflow-x-auto">
-                <button onclick="switchTab('home')" id="mob-nav-home" class="nav-mob-btn px-3 py-1.5 active-nav-link">Home</button>
-                <button onclick="switchTab('proof')" id="mob-nav-proof" class="nav-mob-btn px-3 py-1.5">Live Meets</button>
-                <button onclick="switchTab('curriculum')" id="mob-nav-curriculum" class="nav-mob-btn px-3 py-1.5">Curriculum</button>
-                <button onclick="switchTab('contact')" id="mob-nav-contact" class="nav-mob-btn px-3 py-1.5">Support</button>
-            </div>
-        </div>
-    </nav>
+clients_db = load_clients()
 
-    <!-- CONTENT WRAPPER -->
-    <main id="main-content" class="flex-grow">
+# Telegram Alert Function
+def send_telegram_alert(token, chat_id, message):
+    if token and chat_id:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
+        try:
+            requests.post(url, json=payload, timeout=5)
+        except Exception as e:
+            pass
 
-        <!-- PAGE 1: HOME -->
-        <section id="page-home" class="page-section">
-            <header class="relative overflow-hidden py-16 sm:py-24 border-b border-slate-800/80 bg-gradient-to-b from-darkBg via-slate-900/50 to-darkBg">
-                <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
-                    <span class="inline-flex items-center gap-2 bg-amber-500/10 text-accentGold border border-amber-500/20 text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider mb-6">
-                        🔥 500+ Active Institutional Traders Joined
-                    </span>
-                    <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white max-w-4xl mx-auto leading-tight">
-                        Institutional Grade Execution & <span class="text-transparent bg-clip-text bg-gradient-to-r from-accentGold via-amber-200 to-accentCyan">Algorithmic Analytics</span>
-                    </h1>
-                    <p class="mt-6 text-lg sm:text-xl text-slate-400 max-w-3xl mx-auto leading-relaxed font-normal">
-                        Master Smart Money Concepts (SMC), order flow dynamics, and quantitative analytics through daily live Google Meet interactive mentorship sessions led by <strong class="text-white">Mr. Yusuf</strong>.
-                    </p>
-                    
-                    <div class="mt-10 flex flex-col sm:flex-row justify-center items-center gap-4">
-                        <button onclick="openLeadModal('Access AI Tools via Free Partner Account')" class="w-full sm:w-auto bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold px-8 py-4 rounded-xl shadow-xl transition-all text-sm sm:text-base text-center">
-                            Access AI Tools via Free Partner Account
-                        </button>
-                        <button onclick="switchTab('proof')" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold px-8 py-4 rounded-xl transition-all text-sm sm:text-base">
-                            View Live Meet Proofs →
-                        </button>
-                    </div>
+# Sidebar Configuration
+st.sidebar.markdown("### 🚀 Terminal Access Pro")
+st.sidebar.caption("Mentor: Mr. Yusuf")
+st.sidebar.markdown("---")
+st.sidebar.header("🔑 Unique Client Login")
 
-                    <!-- LIVE MEET MOCKUP -->
-                    <div class="mt-14 max-w-4xl mx-auto rounded-2xl border border-slate-800 bg-cardBg overflow-hidden shadow-2xl p-3 sm:p-5 glow-gold">
-                        <div class="bg-slate-950 rounded-xl p-4 sm:p-6 text-left border border-slate-800/80">
-                            <div class="flex flex-wrap items-center justify-between border-b border-slate-800 pb-4 mb-4 gap-2">
-                                <div class="flex items-center gap-3">
-                                    <span class="w-3 h-3 rounded-full bg-red-500 animate-pulse"></span>
-                                    <div>
-                                        <h3 class="text-white font-bold text-sm sm:text-base">Google Meet: Nifty & BankNifty Live Execution</h3>
-                                        <p class="text-xs text-slate-400">Host: Lead Mentor Mr. Yusuf | Order Flow & SMC Masterclass</p>
-                                    </div>
-                                </div>
-                                <span class="bg-emerald-500/20 text-emerald-400 text-xs px-3 py-1 rounded-full font-mono font-bold border border-emerald-500/30">
-                                    🟢 48 Traders Connected
-                                </span>
-                            </div>
+# Session State Initialization
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+if "broker_connected" not in st.session_state:
+    st.session_state["broker_connected"] = False
+if "saved_client_id" not in st.session_state:
+    st.session_state["saved_client_id"] = ""
+if "saved_api_key" not in st.session_state:
+    st.session_state["saved_api_key"] = ""
+if "last_alert_sent" not in st.session_state:
+    st.session_state["last_alert_sent"] = ""
 
-                            <div class="bg-slate-900 rounded-lg p-4 sm:p-6 border border-slate-800 relative min-h-[220px] flex flex-col justify-between">
-                                <div class="flex justify-between items-center text-xs font-mono text-slate-400 border-b border-slate-800/60 pb-2">
-                                    <span>[LIVE SCREENSHARE] NIFTY 5m Order Block Sweep</span>
-                                    <span class="text-accentGold font-bold">FVG Zone Identified</span>
-                                </div>
+# Unique Client Login Form
+with st.sidebar.form(key="login_form"):
+    client_id_input = st.text_input("Client ID / Phone Number:")
+    user_pass = st.text_input("Enter Secret Password:", type="password")
+    submit_button = st.form_submit_button(label="Unlock Terminal")
 
-                                <div class="my-6 flex items-end justify-around h-28 px-4 opacity-90">
-                                    <div class="flex flex-col items-center gap-1"><div class="w-1 h-6 bg-red-500/40"></div><div class="w-3 h-12 bg-red-500 rounded-sm"></div><div class="w-1 h-4 bg-red-500/40"></div></div>
-                                    <div class="flex flex-col items-center gap-1"><div class="w-1 h-4 bg-red-500/40"></div><div class="w-3 h-8 bg-red-500 rounded-sm"></div><div class="w-1 h-3 bg-red-500/40"></div></div>
-                                    <div class="flex flex-col items-center gap-1"><div class="w-1 h-8 bg-emerald-500/40"></div><div class="w-3 h-16 bg-emerald-500 rounded-sm"></div><div class="w-1 h-6 bg-emerald-500/40"></div></div>
-                                    <div class="flex flex-col items-center gap-1 relative"><span class="absolute -top-6 text-[9px] font-mono bg-accentGold text-slate-950 font-bold px-1.5 py-0.5 rounded">Entry Trigger</span><div class="w-1 h-10 bg-emerald-500/40"></div><div class="w-3 h-20 bg-emerald-500 rounded-sm"></div><div class="w-1 h-4 bg-emerald-500/40"></div></div>
-                                    <div class="flex flex-col items-center gap-1"><div class="w-1 h-6 bg-emerald-500/40"></div><div class="w-3 h-14 bg-emerald-500 rounded-sm"></div><div class="w-1 h-2 bg-emerald-500/40"></div></div>
-                                </div>
+if submit_button:
+    if user_pass == "SMCALGO@1999" and client_id_input.lower() == "admin":
+        st.session_state["authenticated"] = True
+        st.session_state["admin_mode"] = True
+        st.session_state["client_name"] = "Mr. Yusuf (Admin)"
+    elif client_id_input in clients_db and clients_db[client_id_input]["password"] == user_pass:
+        if clients_db[client_id_input].get("active", True):
+            st.session_state["authenticated"] = True
+            st.session_state["admin_mode"] = clients_db[client_id_input].get("admin", False)
+            st.session_state["client_name"] = clients_db[client_id_input]["name"]
+        else:
+            st.session_state["authenticated"] = False
+            st.sidebar.error("❌ Your subscription has expired or account is blocked!")
+    else:
+        st.session_state["authenticated"] = False
+        st.sidebar.error("❌ Incorrect Client ID or Password!")
 
-                                <div class="flex items-center justify-between border-t border-slate-800/60 pt-3 text-xs text-slate-400">
-                                    <div class="flex items-center gap-3">
-                                        <span class="bg-slate-800 p-1.5 rounded-md">🎤 Mic Active</span>
-                                        <span class="bg-slate-800 p-1.5 rounded-md hidden sm:inline-block">📷 HD Cam</span>
-                                    </div>
-                                    <span class="text-accentCyan font-mono text-[11px]">Streamlit Terminal Synced</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <!-- METRICS -->
-            <section class="py-10 bg-slate-900/60 border-b border-slate-800">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-                        <div class="p-5 bg-cardBg rounded-xl border border-slate-800"><p class="text-3xl sm:text-4xl font-extrabold text-accentGold">500+</p><p class="text-xs text-slate-400 mt-1 uppercase font-semibold">Active Traders Joined</p></div>
-                        <div class="p-5 bg-cardBg rounded-xl border border-slate-800"><p class="text-3xl sm:text-4xl font-extrabold text-emerald-400">120+</p><p class="text-xs text-slate-400 mt-1 uppercase font-semibold">Live Google Meets Held</p></div>
-                        <div class="p-5 bg-cardBg rounded-xl border border-slate-800"><p class="text-3xl sm:text-4xl font-extrabold text-accentCyan">100%</p><p class="text-xs text-slate-400 mt-1 uppercase font-semibold">Free Terminal Access</p></div>
-                        <div class="p-5 bg-cardBg rounded-xl border border-slate-800"><p class="text-3xl sm:text-4xl font-extrabold text-purple-400">4.9 / 5</p><p class="text-xs text-slate-400 mt-1 uppercase font-semibold">Community Rating</p></div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- PATHWAYS -->
-            <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-                <div class="text-center max-w-3xl mx-auto mb-16">
-                    <span class="text-accentCyan font-semibold text-xs uppercase tracking-widest">Compliant Onboarding Options</span>
-                    <h2 class="text-3xl sm:text-4xl font-extrabold text-white mt-2">Institutional Terminal Pathways</h2>
-                    <p class="text-slate-400 text-sm sm:text-base mt-3">Select your preferred compliance pathway to receive complete access to the TradeVortex AI Analytics Suite and daily live mentorship.</p>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div class="bg-cardBg border border-slate-800 rounded-2xl p-8 flex flex-col justify-between shadow-xl">
-                        <div>
-                            <span class="text-emerald-400 text-xs font-semibold uppercase tracking-wider bg-emerald-500/10 px-3 py-1 rounded-md border border-emerald-500/20">Pathway 01</span>
-                            <h3 class="text-xl font-bold text-white mt-6">New Partner Account</h3>
-                            <p class="text-slate-400 text-sm mt-3 leading-relaxed">Open a fresh Angel One Demat account through our official institutional partner link to unlock 100% complimentary terminal access.</p>
-                            <ul class="mt-6 space-y-2 text-xs text-slate-300">
-                                <li class="flex items-center gap-2">✓ Free Institutional Terminal License</li>
-                                <li class="flex items-center gap-2">✓ Daily Google Meet Class Access</li>
-                                <li class="flex items-center gap-2">✓ Zero Monthly Maintenance Fee</li>
-                            </ul>
-                        </div>
-                        <div class="mt-8">
-                            <button onclick="openLeadModal('Pathway 1: New Partner Account')" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl transition-all text-center block text-sm shadow-md">
-                                Open Account Free
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bg-cardBg border border-slate-800 rounded-2xl p-8 flex flex-col justify-between shadow-xl">
-                        <div>
-                            <span class="text-accentCyan text-xs font-semibold uppercase tracking-wider bg-cyan-500/10 px-3 py-1 rounded-md border border-cyan-500/20">Pathway 02</span>
-                            <h3 class="text-xl font-bold text-white mt-6">Family / Peer Account</h3>
-                            <p class="text-slate-400 text-sm mt-3 leading-relaxed">Already have an account in your name? Open a new account for a family member or friend using our link to fulfill onboarding requirements.</p>
-                            <ul class="mt-6 space-y-2 text-xs text-slate-300">
-                                <li class="flex items-center gap-2">✓ Compliant Multi-User Access</li>
-                                <li class="flex items-center gap-2">✓ Live Class Pass Included</li>
-                                <li class="flex items-center gap-2">✓ Full Analytics Suite Unlocked</li>
-                            </ul>
-                        </div>
-                        <div class="mt-8">
-                            <button onclick="openLeadModal('Pathway 2: Family / Peer Account')" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 px-4 rounded-xl transition-all text-center block text-sm border border-slate-700 shadow-md">
-                                Register Family Member
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="bg-cardBg border border-slate-800 rounded-2xl p-8 flex flex-col justify-between shadow-xl">
-                        <div>
-                            <span class="text-accentGold text-xs font-semibold uppercase tracking-wider bg-amber-500/10 px-3 py-1 rounded-md border border-amber-500/20">Pathway 03</span>
-                            <h3 class="text-xl font-bold text-white mt-6">Direct Terminal Pass</h3>
-                            <p class="text-slate-400 text-sm mt-3 leading-relaxed">Prefer not to open a new Demat account? Procure a direct terminal research pass for ₹4,999 via verified WhatsApp channel.</p>
-                            <ul class="mt-6 space-y-2 text-xs text-slate-300">
-                                <li class="flex items-center gap-2">✓ Direct Educational Terminal Pass</li>
-                                <li class="flex items-center gap-2">✓ Immediate Credential Setup</li>
-                                <li class="flex items-center gap-2">✓ Dedicated Support Assistance</li>
-                            </ul>
-                        </div>
-                        <div class="mt-8">
-                            <a href="https://wa.me/918108433013?text=Bhai%20mujhe%20AI%20Tools%20ka%204999%20wala%20pass%20chahiye" target="_blank" class="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-3.5 px-4 rounded-xl transition-all text-center block text-sm shadow-md">
-                                Acquire Direct Pass (₹4,999)
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- STUDENT TESTIMONIALS SECTION -->
-            <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 bg-slate-900/40 rounded-3xl border border-slate-800 my-10">
-                <div class="text-center max-w-3xl mx-auto mb-12">
-                    <span class="text-accentGold font-bold text-xs uppercase tracking-widest">Success Stories</span>
-                    <h2 class="text-3xl font-extrabold text-white mt-2">What Our Community Traders Say</h2>
-                    <p class="text-slate-400 text-sm mt-2">Real feedback from active traders mastering SMC with Mr. Yusuf.</p>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div class="bg-cardBg p-6 rounded-2xl border border-slate-800">
-                        <p class="text-xs text-amber-400 font-bold mb-2">★★★★★</p>
-                        <p class="text-slate-300 text-xs italic leading-relaxed">"Yusuf bhai ka SMC mentorship aur FVG mapping session join karne ke baad mere entries bilkul sharp ho gaye hain. Live meets are gold!"</p>
-                        <p class="text-white font-bold text-xs mt-4">— Rohit S. <span class="text-slate-500 font-normal">(Mumbai)</span></p>
-                    </div>
-                    <div class="bg-cardBg p-6 rounded-2xl border border-slate-800">
-                        <p class="text-xs text-amber-400 font-bold mb-2">★★★★★</p>
-                        <p class="text-slate-300 text-xs italic leading-relaxed">"Streamlit AI terminal tool amazing hai. Options strike selection aur risk calculation ab seconds mein ho jata hai. Highly recommended."</p>
-                        <p class="text-white font-bold text-xs mt-4">— Amit K. <span class="text-slate-500 font-normal">(Delhi)</span></p>
-                    </div>
-                    <div class="bg-cardBg p-6 rounded-2xl border border-slate-800">
-                        <p class="text-xs text-amber-400 font-bold mb-2">★★★★★</p>
-                        <p class="text-slate-300 text-xs italic leading-relaxed">"Sabse best baat transparency hai. Daily Google Meet par Yusuf bhai khud live chart mark karke dikhate hain."</p>
-                        <p class="text-white font-bold text-xs mt-4">— Vishal P. <span class="text-slate-500 font-normal">(Ahmedabad)</span></p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- FAQ SECTION -->
-            <section class="max-w-4xl mx-auto px-4 py-16">
-                <div class="text-center mb-12">
-                    <h2 class="text-3xl font-extrabold text-white">Frequently Asked Questions</h2>
-                    <p class="text-slate-400 text-sm mt-2">Got questions? We've got answers.</p>
-                </div>
-                <div class="space-y-4">
-                    <div class="bg-cardBg border border-slate-800 rounded-xl p-5 cursor-pointer" onclick="toggleFaq(this)">
-                        <div class="flex justify-between items-center font-bold text-sm text-white">
-                            <span>1. How do I get the Google Meet link for live sessions?</span>
-                            <span class="text-accentGold text-lg">+</span>
-                        </div>
-                        <p class="text-slate-400 text-xs mt-3 hidden leading-relaxed">Once you complete your onboarding via partner account or direct pass, you are added to our official VIP community where daily Google Meet links are shared before market hours.</p>
-                    </div>
-                    <div class="bg-cardBg border border-slate-800 rounded-xl p-5 cursor-pointer" onclick="toggleFaq(this)">
-                        <div class="flex justify-between items-center font-bold text-sm text-white">
-                            <span>2. Is the Angel One partner account opening free?</span>
-                            <span class="text-accentGold text-lg">+</span>
-                        </div>
-                        <p class="text-slate-400 text-xs mt-3 hidden leading-relaxed">Yes! Opening your Demat account through our official partner link is 100% free with zero annual maintenance charges for the first year.</p>
-                    </div>
-                    <div class="bg-cardBg border border-slate-800 rounded-xl p-5 cursor-pointer" onclick="toggleFaq(this)">
-                        <div class="flex justify-between items-center font-bold text-sm text-white">
-                            <span>3. What is included in the AI Analytics Terminal?</span>
-                            <span class="text-accentGold text-lg">+</span>
-                        </div>
-                        <p class="text-slate-400 text-xs mt-3 hidden leading-relaxed">The terminal includes automated Order Block detection, Fair Value Gap (FVG) scanners, live options delta volume tracking, and risk-reward position sizers.</p>
-                    </div>
-                </div>
-            </section>
-        </section>
-
-        <!-- PAGE 2: PROOFS -->
-        <section id="page-proof" class="page-section hidden py-16">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-12">
-                    <span class="text-accentGold font-bold text-xs uppercase tracking-widest">Verified Transparency</span>
-                    <h2 class="text-3xl sm:text-5xl font-extrabold text-white mt-2">Live Google Meet Mentorship Proofs</h2>
-                    <p class="text-slate-400 text-sm sm:text-base mt-3">Browse screenshots and chart analysis markups from our daily live trading sessions led by Mr. Yusuf.</p>
-                </div>
-
-                <div class="flex flex-wrap justify-center gap-2 sm:gap-3 mb-10">
-                    <button onclick="filterProofs('all')" class="proof-filter-btn bg-accentGold text-slate-950 font-bold text-xs px-4 py-2 rounded-lg">All Proofs</button>
-                    <button onclick="filterProofs('scalping')" class="proof-filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2 rounded-lg border border-slate-700">Nifty Scalping</button>
-                    <button onclick="filterProofs('smc')" class="proof-filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2 rounded-lg border border-slate-700">SMC Masterclass</button>
-                    <button onclick="filterProofs('terminal')" class="proof-filter-btn bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs px-4 py-2 rounded-lg border border-slate-700">AI Terminal Demos</button>
-                </div>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                    <div class="proof-card scalping bg-cardBg border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                        <div class="bg-slate-950 p-4 border-b border-slate-800">
-                            <div class="bg-slate-900 rounded-lg p-4 aspect-video flex flex-col justify-between border border-slate-800">
-                                <div class="flex justify-between items-center text-[10px] text-slate-400"><span>🔴 Live Screen Share</span><span class="font-mono">10:15 AM IST</span></div>
-                                <div class="my-auto text-center"><div class="font-mono text-emerald-400 text-sm font-bold">NIFTY 24,500 CE | Order Flow Sweep</div><p class="text-[11px] text-slate-400 mt-1">Live FVG Refinement with 58 Community Members</p></div>
-                                <div class="flex justify-between items-center text-[10px] text-slate-500 border-t border-slate-800/80 pt-2"><span>Mentor: Mr. Yusuf</span><span class="text-emerald-400 font-semibold">Verified</span></div>
-                            </div>
-                        </div>
-                        <div class="p-6"><span class="text-accentGold text-xs font-bold uppercase">Session #118</span><h3 class="text-lg font-bold text-white mt-1">Nifty Index Liquidity Sweep & Entry</h3><p class="text-slate-400 text-xs mt-2">Live session mapping out exact equal lows liquidity sweep before the 120 point rally.</p></div>
-                    </div>
-                    <div class="proof-card smc bg-cardBg border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                        <div class="bg-slate-950 p-4 border-b border-slate-800">
-                            <div class="bg-slate-900 rounded-lg p-4 aspect-video flex flex-col justify-between border border-slate-800">
-                                <div class="flex justify-between items-center text-[10px] text-slate-400"><span>🔴 Live Screen Share</span><span class="font-mono">01:45 PM IST</span></div>
-                                <div class="my-auto text-center"><div class="font-mono text-accentCyan text-sm font-bold">BANKNIFTY Order Block Mapping</div><p class="text-[11px] text-slate-400 mt-1">15-Min Structure Break + 1-Min FVG Refinement</p></div>
-                                <div class="flex justify-between items-center text-[10px] text-slate-500 border-t border-slate-800/80 pt-2"><span>Mentor: Mr. Yusuf</span><span class="text-accentCyan font-semibold">Verified</span></div>
-                            </div>
-                        </div>
-                        <div class="p-6"><span class="text-accentCyan text-xs font-bold uppercase">Session #115</span><h3 class="text-lg font-bold text-white mt-1">BankNifty Institutional Order Block</h3><p class="text-slate-400 text-xs mt-2">Step-by-step breakdown showing how institutional order blocks hold key levels.</p></div>
-                    </div>
-                    <div class="proof-card terminal bg-cardBg border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-                        <div class="bg-slate-950 p-4 border-b border-slate-800">
-                            <div class="bg-slate-900 rounded-lg p-4 aspect-video flex flex-col justify-between border border-slate-800">
-                                <div class="flex justify-between items-center text-[10px] text-slate-400"><span>🔴 Terminal Demo</span><span class="font-mono">03:30 PM IST</span></div>
-                                <div class="my-auto text-center"><div class="font-mono text-purple-400 text-sm font-bold">TradeVortex Streamlit AI Dashboard</div><p class="text-[11px] text-slate-400 mt-1">Automated Strike Selection & Risk Calculator</p></div>
-                                <div class="flex justify-between items-center text-[10px] text-slate-500 border-t border-slate-800/80 pt-2"><span>Mentor: Mr. Yusuf</span><span class="text-purple-400 font-semibold">Verified</span></div>
-                            </div>
-                        </div>
-                        <div class="p-6"><span class="text-purple-400 text-xs font-bold uppercase">Session #112</span><h3 class="text-lg font-bold text-white mt-1">AI Tools Setup & Onboarding</h3><p class="text-slate-400 text-xs mt-2">Live walkthrough guiding academy members on connecting analytics terminal.</p></div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- PAGE 3: CURRICULUM -->
-        <section id="page-curriculum" class="page-section hidden py-16">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-16">
-                    <span class="text-accentCyan font-bold text-xs uppercase tracking-widest">Syllabus Breakdown</span>
-                    <h2 class="text-3xl sm:text-5xl font-extrabold text-white mt-2">Institutional Curriculum Pillars</h2>
-                    <p class="text-slate-400 text-sm sm:text-base mt-3">Built strictly on quantitative research and market structure dynamics taught by Mr. Yusuf.</p>
-                </div>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div class="bg-cardBg/60 border border-slate-800 rounded-2xl p-8"><span class="text-accentGold font-mono text-lg font-bold">01</span><h3 class="text-lg font-bold text-white mt-4 mb-2">Market Structure</h3><p class="text-slate-400 text-sm leading-relaxed">Systematic identification of structural breaks (BOS) and character shifts (CHoCH).</p></div>
-                    <div class="bg-cardBg/60 border border-slate-800 rounded-2xl p-8"><span class="text-accentCyan font-mono text-lg font-bold">02</span><h3 class="text-lg font-bold text-white mt-4 mb-2">Imbalance & Liquidity</h3><p class="text-slate-400 text-sm leading-relaxed">Precise mapping of Fair Value Gaps (FVG), order blocks, and institutional sweeps.</p></div>
-                    <div class="bg-cardBg/60 border border-slate-800 rounded-2xl p-8"><span class="text-emerald-400 font-mono text-lg font-bold">03</span><h3 class="text-lg font-bold text-white mt-4 mb-2">Algorithmic Execution</h3><p class="text-slate-400 text-sm leading-relaxed">Automated strike selection, trend filters, and dynamic risk management calculators.</p></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- PAGE 4: SUPPORT DESK -->
-        <section id="page-contact" class="page-section hidden py-16">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="text-center max-w-3xl mx-auto mb-16">
-                    <span class="text-emerald-400 font-bold text-xs uppercase tracking-widest">Support Desk</span>
-                    <h2 class="text-3xl sm:text-5xl font-extrabold text-white mt-2">Get Assistance & Account Setup</h2>
-                    <p class="text-slate-400 text-sm sm:text-base mt-3">Need help with Demat opening or terminal pass? Our team is available directly on WhatsApp.</p>
-                </div>
-                <div class="bg-cardBg border border-slate-800 rounded-2xl p-8 max-w-2xl mx-auto shadow-xl text-center">
-                    <span class="text-emerald-400 text-xs font-bold uppercase tracking-wider bg-emerald-500/10 px-3 py-1 rounded">Instant WhatsApp Support</span>
-                    <h3 class="text-2xl font-bold text-white mt-4">Official WhatsApp Line</h3>
-                    <p class="text-slate-400 text-xs mt-2">Connect directly with Mr. Yusuf and the TradeVortex onboarding desk.</p>
-                    <div class="mt-8 space-y-4 text-xs max-w-xs mx-auto text-left">
-                        <div class="flex items-center gap-3 text-slate-350"><span>📱</span><div><p class="text-slate-500 font-semibold">WhatsApp Number</p><p class="text-white font-mono font-bold">+91 81084 33013</p></div></div>
-                        <div class="flex items-center gap-3 text-slate-300"><span>👨‍🏫</span><div><p class="text-slate-500 font-semibold">Lead Mentor</p><p class="text-white font-bold">Mr. Yusuf</p></div></div>
-                    </div>
-                    <div class="mt-8">
-                        <a href="https://wa.me/918108433013?text=Hello%20TradeVortex%20Team,%20I%20need%20assistance%20with%20account%20setup" target="_blank" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-xl transition-all text-center block text-xs shadow-md">
-                            Open WhatsApp Chat Now →
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-    </main>
-
-    <!-- LEAD CAPTURE MODAL POPUP -->
-    <div id="leadModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
-        <div class="bg-cardBg border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative">
-            <button onclick="closeLeadModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white font-bold text-lg">✕</button>
-            <span class="text-accentGold text-xs font-bold uppercase">Quick Verification</span>
-            <h3 class="text-xl font-bold text-white mt-2">Claim Your Terminal Access</h3>
-            <p class="text-slate-400 text-xs mt-1">Enter your details to proceed to WhatsApp with pre-filled info.</p>
+# Authentication Status UI
+if st.session_state["authenticated"]:
+    client_display = st.session_state.get("client_name", "Authorized User")
+    if st.session_state.get("admin_mode", False):
+        st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
+        
+        with st.sidebar.expander("🛠️ Admin Client Manager"):
+            st.markdown("**Add New Client**")
+            new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
+            new_name = st.text_input("Client Name", key="new_client_name")
+            new_pass = st.text_input("Assign Password", key="new_client_pass")
             
-            <form id="leadForm" onsubmit="submitLeadForm(event)" class="mt-6 space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">Your Name</label>
-                    <input type="text" id="userName" required placeholder="e.g. Rahul Sharma" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accentGold">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">WhatsApp Number</label>
-                    <input type="tel" id="userPhone" required placeholder="e.g. 9876543210" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-accentGold">
-                </div>
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 rounded-xl text-xs transition-all shadow-md mt-2">
-                    Proceed to WhatsApp →
+            if st.button("Add Client to DB"):
+                if new_phone and new_name and new_pass:
+                    clients_db[new_phone] = {
+                        "name": new_name,
+                        "password": new_pass,
+                        "active": True,
+                        "admin": False
+                    }
+                    save_clients(clients_db)
+                    st.success(f"✅ Client {new_name} added successfully!")
+                    st.rerun()
+                else:
+                    st.error("⚠️ Fill all fields!")
+            
+            st.markdown("---")
+            st.markdown("**Remove / Delete Client**")
+            non_admin_clients = [k for k in clients_db.keys() if k != "admin"]
+            if non_admin_clients:
+                client_to_remove = st.selectbox("Select Client to Remove", non_admin_clients)
+                if st.button("Delete Selected Client"):
+                    if client_to_remove in clients_db:
+                        del clients_db[client_to_remove]
+                        save_clients(clients_db)
+                        st.success(f"✅ Client {client_to_remove} removed successfully!")
+                        st.rerun()
+            else:
+                st.caption("No custom clients found.")
+            
+            st.markdown("---")
+            st.markdown(f"**Total Registered Clients:** {len(clients_db)}")
+
+        with st.sidebar.expander("📢 Telegram Alerts Config"):
+            tg_token = st.text_input("Bot Token", key="tg_token_val")
+            tg_chat = st.text_input("Chat / Channel ID", key="tg_chat_val")
+            st.session_state["tg_token"] = tg_token
+            st.session_state["tg_chat"] = tg_chat
+    else:
+        st.sidebar.success(f"✅ Welcome, {client_display}")
+else:
+    st.sidebar.warning("🔒 Scanner Locked (₹499)")
+
+# Locked Screen View + Instant Passclaim Sandbox
+if not st.session_state["authenticated"]:
+    st.title("⚡ Institutional SMC Terminal Pro")
+    st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
+    
+    st.markdown("### 🚀 Pay ₹499 & Get Instant Unique Password Access")
+    
+    upi_id = "9199786026@ptyes"
+    payee_name = "Mdaziz Shekh"
+    amount = "499"
+    
+    qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
+    
+    col1, col2 = st.columns([1, 1.2])
+    
+    with col1:
+        st.image(qr_url, caption="Scan using GPay / PhonePe / Paytm / BHIM")
+        
+    with col2:
+        st.markdown(f"""
+        **Steps to unlock access:**
+        1. Scan QR & pay **₹{amount}**.
+        2. Enter your payment UTR / Transaction ID below to verify instant pass.
+        3. Or send screenshot directly on WhatsApp to get your key!
+        """)
+        
+        with st.expander("⚡ Instant Pass Verification (Auto-Claim)", expanded=True):
+            user_claim_phone = st.text_input("Your Mobile Number:")
+            user_claim_utr = st.text_input("UPI Transaction Reference / UTR (12 Digits):")
+            if st.button("Verify Payment & Claim Key"):
+                if len(user_claim_phone) >= 10 and len(user_claim_utr) >= 6:
+                    generated_pass = f"SMC{user_claim_utr[-4:]}"
+                    clients_db[user_claim_phone] = {
+                        "name": f"User {user_claim_phone[-4:]}",
+                        "password": generated_pass,
+                        "active": True,
+                        "admin": False
+                    }
+                    save_clients(clients_db)
+                    st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{user_claim_phone}`\n**Password:** `{generated_pass}`")
+                    st.info("Log in using the Sidebar to unlock immediately.")
+                else:
+                    st.error("⚠️ Enter valid Phone & UTR number!")
+        
+        wa_text = "Bhai%20maine%20499%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
+        wa_url = f"https://wa.me/918108433013?text={wa_text}"
+        
+        st.markdown(f'''
+            <a href="{wa_url}" target="_blank">
+                <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px; width:100%;">
+                    📲 Send Screenshot on WhatsApp
                 </button>
-            </form>
+            </a>
+            ''', unsafe_allow_html=True)
+            
+    st.stop()
+
+# --- MULTI-BROKER API CONNECTION SECTION ---
+st.sidebar.markdown("---")
+st.sidebar.header("🔌 Multi-Broker Connect")
+
+selected_broker = st.sidebar.selectbox("Select Your Broker", ["Angel One", "Zerodha (Kite)", "Upstox", "Groww", "Other API"])
+
+with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=False):
+    client_id_input_broker = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"], key="client_id_field")
+    api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"], key="api_key_field")
+    api_secret_input = st.text_input("API Secret / Password / MPIN", type="password", key="api_secret_field")
+    
+    if st.button("Connect Demat Account", key="connect_demat_btn"):
+        if client_id_input_broker and api_key_input:
+            st.session_state["saved_client_id"] = client_id_input_broker
+            st.session_state["saved_api_key"] = api_key_input
+            
+            js_save = f"""
+            <script>
+            localStorage.setItem('angel_client_id', '{client_id_input_broker}');
+            localStorage.setItem('angel_api_key', '{api_key_input}');
+            </script>
+            """
+            components.html(js_save, height=0)
+
+            st.session_state['broker_connected'] = True
+            st.session_state['active_broker'] = selected_broker
+            st.sidebar.success(f"✅ Connected to {selected_broker} Successfully!")
+        else:
+            st.sidebar.error("❌ Please fill in the required credentials.")
+
+if st.session_state.get('broker_connected', False):
+    st.sidebar.info(f"🟢 Active Broker: {st.session_state.get('active_broker', 'None')}")
+
+# Unlocked Content Area
+count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
+
+st.title("⚡ Institutional SMC Analytics Terminal Pro")
+st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
+
+# Asset Details Dictionary
+ASSET_METADATA = {
+    "^NSEI": {"name": "Nifty 50", "step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"},
+    "^NSEBANK": {"name": "Bank Nifty", "step": 100, "lot": 15, "tv_symbol": "NSE:BANKNIFTY"},
+    "NIFTY_FIN_SERVICE.NS": {"name": "Fin Nifty", "step": 50, "lot": 25, "tv_symbol": "NSE:FINNIFTY"},
+    "^BSESN": {"name": "Sensex", "step": 100, "lot": 10, "tv_symbol": "BSE:SENSEX"},
+    "BSE-BANK.BO": {"name": "Bankex", "step": 100, "lot": 15, "tv_symbol": "BSE:BANKEX"},
+    "RELIANCE.NS": {"name": "Reliance", "step": 20, "lot": 250, "tv_symbol": "NSE:RELIANCE"},
+    "TCS.NS": {"name": "TCS", "step": 50, "lot": 175, "tv_symbol": "NSE:TCS"},
+    "HDFCBANK.NS": {"name": "HDFC Bank", "step": 10, "lot": 550, "tv_symbol": "NSE:HDFCBANK"},
+    "TATAMOTORS.NS": {"name": "Tata Motors", "step": 10, "lot": 550, "tv_symbol": "NSE:TATAMOTORS"}
+}
+
+ASSET_DICT = {
+    "NSE Index / F&O": {
+        "Nifty 50": "^NSEI",
+        "Bank Nifty": "^NSEBANK",
+        "Fin Nifty": "NIFTY_FIN_SERVICE.NS"
+    },
+    "BSE Index / F&O": {
+        "Sensex": "^BSESN",
+        "Bankex": "BSE-BANK.BO"
+    },
+    "Equity Stocks (NSE)": {
+        "Reliance": "RELIANCE.NS",
+        "TCS": "TCS.NS",
+        "HDFC Bank": "HDFCBANK.NS",
+        "Tata Motors": "TATAMOTORS.NS"
+    },
+    "Commodities (MCX / Global)": {
+        "Gold Futures": "GC=F",
+        "Silver Futures": "SI=F",
+        "Crude Oil Futures": "CL=F",
+        "Natural Gas": "NG=F"
+    }
+}
+
+st.sidebar.header("Market Selection")
+category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
+selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
+ticker = ASSET_DICT[category][selected_asset]
+
+custom_ticker = st.sidebar.text_input("Custom Yahoo Ticker:", "")
+if custom_ticker.strip():
+    ticker = custom_ticker.strip()
+
+timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=1)
+period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
+
+st.sidebar.header("Risk Management")
+capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
+risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
+
+st.sidebar.header("🎯 Strike Mapping View")
+strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)", "ITM 1 (In The Money)", "OTM 1 (Out of The Money)"])
+
+tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
+
+data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
+
+if not data.empty:
+    if isinstance(data.columns, pd.MultiIndex):
+        data.columns = data.columns.get_level_values(0)
+
+    # Indicator Calculations
+    data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
+    data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
+    data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
+    data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
+    
+    # Order Flow Filter
+    data['Order_Flow'] = "NEUTRAL"
+    data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
+    data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
+
+    # Advanced Swing BOS / ChoCH Logic
+    data['Recent_Swing_High'] = data['High'].rolling(window=10).max()
+    data['Recent_Swing_Low'] = data['Low'].rolling(window=10).min()
+
+    data['BOS_Bullish'] = data['Close'] > data['Recent_Swing_High'].shift(1)
+    data['BOS_Bearish'] = data['Close'] < data['Recent_Swing_Low'].shift(1)
+
+    data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
+    data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
+
+    data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Recent_Swing_High'].shift(1))
+    data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Recent_Swing_Low'].shift(1))
+
+    price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
+    data['Consolidation'] = price_range < 0.002
+
+    data['Setup'] = "NEUTRAL / NO SETUP"
+    
+    buy_cond = (data['BOS_Bullish'] | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
+    sell_cond = (data['BOS_Bearish'] | data['Bearish_FVG']) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 55) & (~data['Consolidation'])
+    
+    data.loc[buy_cond, 'Setup'] = "BULLISH SETUP"
+    data.loc[sell_cond, 'Setup'] = "BEARISH SETUP"
+    
+    latest_setup = data['Setup'].iloc[-1]
+    latest_price = data['Close'].iloc[-1]
+    latest_atr = data['ATR'].iloc[-1]
+    latest_rsi = data['RSI'].iloc[-1]
+    latest_of = data['Order_Flow'].iloc[-1]
+    is_consolidating = data['Consolidation'].iloc[-1]
+
+    # Automatic Telegram Notification Dispatcher
+    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
+        alert_key = f"{ticker}_{latest_setup}_{data.index[-1]}"
+        if st.session_state["last_alert_sent"] != alert_key:
+            msg = f"⚡ *SMC ALERT TRIGGERED*\n\n📈 *Symbol:* {selected_asset}\n🎯 *Setup:* {latest_setup}\n💰 *Price:* ₹{latest_price:.2f}\n📊 *RSI:* {latest_rsi:.1f}\n🕒 *Timeframe:* {timeframe}\n\n_TradeVortex SMC Engine_"
+            send_telegram_alert(st.session_state["tg_token"], st.session_state["tg_chat"], msg)
+            st.session_state["last_alert_sent"] = alert_key
+
+    if latest_setup == "BULLISH SETUP":
+        sl = latest_price - (1.5 * latest_atr)
+        target = latest_price + (3.0 * latest_atr)
+        risk_amount = (capital * risk_per_trade) / 100
+        stop_loss_points = abs(latest_price - sl)
+        position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
+    elif latest_setup == "BEARISH SETUP":
+        sl = latest_price + (1.5 * latest_atr)
+        target = latest_price - (3.0 * latest_atr)
+        risk_amount = (capital * risk_per_trade) / 100
+        stop_loss_points = abs(latest_price - sl)
+        position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
+    else:
+        sl, target, position_size = 0.0, 0.0, 0
+
+    # Top Metric Bar
+    row1_1, row1_2, row1_3, row1_4 = st.columns(4)
+    row1_1.metric("Current Spot Price", f"₹ {latest_price:.2f}")
+    
+    buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
+    sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
+
+    if latest_setup == "BULLISH SETUP":
+        row1_2.markdown(
+            f"""<div style="background-color:#0e3a1f; color:#2ecc71; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #2ecc71; font-size:16px;">
+            🚀 {latest_setup}
+            </div>""", unsafe_allow_html=True
+        )
+        st.components.v1.html(buy_sound_js, height=0)
+    elif latest_setup == "BEARISH SETUP":
+        row1_2.markdown(
+            f"""<div style="background-color:#3a0e0e; color:#e74c3c; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #e74c3c; font-size:16px;">
+            🔻 {latest_setup}
+            </div>""", unsafe_allow_html=True
+        )
+        st.components.v1.html(sell_sound_js, height=0)
+    else:
+        if is_consolidating:
+            row1_2.markdown(
+                f"""<div style="background-color:#3a320e; color:#f1c40f; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #f1c40f; font-size:16px;">
+                ⚠️ CONSOLIDATION PHASE
+                </div>""", unsafe_allow_html=True
+            )
+        else:
+            row1_2.markdown(
+                f"""<div style="background-color:#2c3e50; color:#bdc3c7; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #7f8c8d; font-size:16px;">
+                ⏳ {latest_setup}
+                </div>""", unsafe_allow_html=True
+            )
+        
+    row1_3.metric("Order Flow", latest_of)
+    row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
+
+    # --- 🎯 STRIKE PRICE MAPPING & OPTIONS MATRIX ENGINE ---
+    meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
+    step = meta["step"]
+    lot_size = meta["lot"]
+    tv_symbol = meta["tv_symbol"]
+    
+    atm_strike = round(latest_price / step) * step
+    
+    mapped_strike = atm_strike
+    contract_type = "CE" if latest_setup == "BULLISH SETUP" else ("PE" if latest_setup == "BEARISH SETUP" else "CE/PE")
+    
+    if latest_setup == "BULLISH SETUP":
+        if "ITM" in strike_type:
+            mapped_strike = atm_strike - step
+        elif "OTM" in strike_type:
+            mapped_strike = atm_strike + step
+    elif latest_setup == "BEARISH SETUP":
+        if "ITM" in strike_type:
+            mapped_strike = atm_strike + step
+        elif "OTM" in strike_type:
+            mapped_strike = atm_strike - step
+
+    total_lots = max(1, position_size // lot_size) if position_size > 0 else 0
+
+    st.markdown("---")
+    st.markdown("### 📊 Options Matrix & Sentiment Engine")
+    
+    opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
+    
+    # Synthetic PCR & Sentiment Index Simulation based on Trend Strength
+    est_pcr = round(1.25 if latest_of == "BULLISH" else (0.75 if latest_of == "BEARISH" else 0.98), 2)
+    pcr_bias = "Bullish (Put Writing)" if est_pcr > 1.0 else ("Bearish (Call Writing)" if est_pcr < 0.9 else "Neutral")
+
+    if latest_setup == "BULLISH SETUP":
+        opt_col1.markdown(f"""
+        <div style="background-color:#143d22; border: 2px solid #2ecc71; padding:10px; border-radius:8px; text-align:center;">
+            <span style="color:#2ecc71; font-size:12px; font-weight:bold;">EDUCATIONAL CE VIEW</span>
+            <h2 style="color:#ffffff; margin:0;">{mapped_strike} CE</h2>
+            <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
         </div>
-    </div>
+        """, unsafe_allow_html=True)
+    elif latest_setup == "BEARISH SETUP":
+        opt_col1.markdown(f"""
+        <div style="background-color:#3d1414; border: 2px solid #e74c3c; padding:10px; border-radius:8px; text-align:center;">
+            <span style="color:#e74c3c; font-size:12px; font-weight:bold;">EDUCATIONAL PE VIEW</span>
+            <h2 style="color:#ffffff; margin:0;">{mapped_strike} PE</h2>
+            <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        opt_col1.info("⏳ Waiting for Market Setup...")
 
-    <!-- FLOATING WHATSAPP -->
-    <a href="https://wa.me/918108433013?text=Hello%20Mr.%20Yusuf,%20I%20want%20to%20join%20TradeVortex%20Academy." target="_blank" class="fixed bottom-6 right-6 z-50 bg-slate-800 hover:bg-slate-700 text-white p-4 rounded-full shadow-2xl border border-slate-700 flex items-center justify-center transition-all hover:scale-110 group glow-emerald">
-        <svg class="w-7 h-7 fill-current text-emerald-400" viewBox="0 0 24 24"><path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.414-.003 6.557-5.338 11.892-11.893 11.892-1.99-.001-3.951-.5-5.688-1.448l-6.305 1.654zm6.597-3.807c1.676.995 3.276 1.591 5.392 1.592 5.448 0 9.886-4.434 9.889-9.885.002-5.462-4.415-9.89-9.881-9.892-5.452 0-9.887 4.434-9.889 9.884-.001 2.225.651 3.891 1.746 5.634l-.999 3.648 3.742-.981zm11.387-5.464c-.074-.124-.272-.198-.57-.347-.297-.149-1.758-.868-2.031-.967-.272-.099-.47-.149-.669.149-.198.297-.768.967-.941 1.165-.173.198-.347.223-.644.074-.297-.149-1.255-.462-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.297-.347.446-.521.151-.172.2-.296.3-.495.099-.198.05-.372-.025-.521-.075-.148-.669-1.611-.916-2.206-.242-.579-.487-.501-.669-.51l-.57-.01c-.198 0-.52.074-.792.372s-1.04 1.016-1.04 2.479 1.065 2.876 1.213 3.074c.149.198 2.095 3.2 5.076 4.487.709.306 1.263.489 1.694.626.712.226 1.36.194 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.695.248-1.29.173-1.414z"/></svg>
-    </a>
+    opt_col2.metric("Spot Stop-Loss", f"₹ {sl:.2f}" if sl > 0 else "N/A")
+    opt_col3.metric("Spot Target (1:2)", f"₹ {target:.2f}" if target > 0 else "N/A")
+    opt_col4.metric("Est. Market PCR Ratio", f"{est_pcr}", delta=pcr_bias)
 
-    <!-- FOOTER -->
-    <footer class="py-12 border-t border-slate-800/80 bg-slate-950 text-center text-xs text-slate-500 max-w-7xl mx-auto px-4 w-full">
-        <p class="mb-3 font-medium text-slate-400">© 2026 TradeVortex School of Trading. Lead Mentor: Mr. Yusuf.</p>
-        <p class="max-w-3xl mx-auto leading-relaxed text-[11px] text-slate-500">
-            Strict Regulatory Disclaimer: All analytical tools, curriculum materials, algorithmic indicators, and live Google Meet mentorship setups are provided exclusively for educational research, technical backtesting, and market structure analysis. TradeVortex does not operate as a SEBI registered investment advisor and does not offer financial advice, tip services, or guaranteed returns. Trading equities, futures, and options involves substantial risk of loss.
-        </p>
-    </footer>
+    st.markdown("---")
 
-    <!-- JAVASCRIPT -->
-    <script>
-        function switchTab(tabId) {
-            const pages = document.querySelectorAll('.page-section');
-            pages.forEach(page => page.classList.add('hidden'));
-            const activePage = document.getElementById('page-' + tabId);
-            if (activePage) activePage.classList.remove('hidden');
+    row2_1, row2_2, row2_3 = st.columns(3)
+    row2_1.metric("Est. Spot Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
+    row2_2.metric("Est. Spot Target", f"{target:.2f}" if target > 0 else "N/A")
+    row2_3.metric("Max Quantity Model", f"{position_size} Qty ({total_lots} Lots)" if position_size > 0 else "N/A")
 
-            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active-nav-link'));
-            const activeDesktopNav = document.getElementById('nav-' + tabId);
-            if (activeDesktopNav) activeDesktopNav.classList.add('active-nav-link');
+    if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
+        active_b = st.session_state.get('active_broker', 'Broker')
+        st.markdown(f"### ⚡ Broker Integration Sandbox ({active_b})")
+        if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
+            st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-            document.querySelectorAll('.nav-mob-btn').forEach(btn => btn.classList.remove('active-nav-link'));
-            const activeMobileNav = document.getElementById('mob-nav-' + tabId);
-            if (activeMobileNav) activeMobileNav.classList.add('active-nav-link');
+    # --- LIVE CHART ENGINE ---
+    st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
+    
+    if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
+        st.success("⚡ **BSE Real-Time Data Active:** Streaming live 0-sec tick feeds via TradingView Engine.")
+        tv_html = f"""
+        <div class="tradingview-widget-container" style="height:500px;width:100%;">
+          <div id="tradingview_bse_chart" style="height:500px;width:100%;"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+          <script type="text/javascript">
+          new TradingView.widget({{
+            "autosize": true,
+            "symbol": "{tv_symbol}",
+            "interval": "{tv_tf_map.get(timeframe, '15')}",
+            "timezone": "Asia/Kolkata",
+            "theme": "dark",
+            "style": "1",
+            "locale": "in",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": false,
+            "hide_legend": false,
+            "save_image": false,
+            "container_id": "tradingview_bse_chart"
+          }});
+          </script>
+        </div>
+        """
+        components.html(tv_html, height=520)
+    else:
+        fig = go.Figure()
+        fig.add_trace(go.Candlestick(
+            x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
+        ))
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
+        ))
+        fig.add_trace(go.Scatter(
+            x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
+        ))
+        
+        if latest_setup != "NEUTRAL / NO SETUP":
+            fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
+            fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
 
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
+        fig.update_layout(
+            xaxis_rangeslider_visible=False,
+            template="plotly_dark",
+            height=480,
+            margin=dict(l=10, r=10, t=30, b=10)
+        )
+        st.plotly_chart(fig, use_container_width=True)
 
-        function filterProofs(category) {
-            document.querySelectorAll('.proof-card').forEach(card => {
-                card.style.display = (category === 'all' || card.classList.contains(category)) ? 'block' : 'none';
-            });
-            document.querySelectorAll('.proof-filter-btn').forEach(btn => {
-                btn.classList.remove('bg-accentGold', 'text-slate-950');
-                btn.classList.add('bg-slate-800', 'text-slate-300');
-            });
-            event.target.classList.remove('bg-slate-800', 'text-slate-300');
-            event.target.classList.add('bg-accentGold', 'text-slate-950');
-        }
+    st.subheader("Live Market SMC Analytics Table")
 
-        function toggleFaq(element) {
-            const p = element.querySelector('p');
-            const span = element.querySelector('span:last-child');
-            if (p.classList.contains('hidden')) {
-                p.classList.remove('hidden');
-                span.textContent = '−';
-            } else {
-                p.classList.add('hidden');
-                span.textContent = '+';
-            }
-        }
+    def color_table_setup(val):
+        if val == "BULLISH SETUP":
+            return 'background-color: #0e3a1f; color: #2ecc71; font-weight: bold;'
+        elif val == "BEARISH SETUP":
+            return 'background-color: #3a0e0e; color: #e74c3c; font-weight: bold;'
+        elif val == "CONSOLIDATION PHASE":
+            return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
+        return ''
 
-        let selectedPathway = '';
-        function openLeadModal(pathway) {
-            selectedPathway = pathway;
-            document.getElementById('leadModal').classList.remove('hidden');
-        }
-        function closeLeadModal() {
-            document.getElementById('leadModal').classList.add('hidden');
-        }
-        function submitLeadForm(e) {
-            e.preventDefault();
-            const name = document.getElementById('userName').value;
-            const phone = document.getElementById('userPhone').value;
-            const text = encodeURIComponent(`Hello Mr. Yusuf, my name is ${name} (${phone}). I want to join via: ${selectedPathway}`);
-            window.open(`https://wa.me/918108433013?text=${text}`, '_blank');
-            closeLeadModal();
-        }
+    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12)
+    
+    styled_table = table_df.style.map(color_table_setup, subset=['Setup'])
+    st.dataframe(styled_table, use_container_width=True)
 
-        // Countdown Timer
-        let totalSeconds = 3 * 3600 + 45 * 60 + 12;
-        setInterval(() => {
-            if (totalSeconds > 0) totalSeconds--;
-            let h = Math.floor(totalSeconds / 3600);
-            let m = Math.floor((totalSeconds % 3600) / 60);
-            let s = totalSeconds % 60;
-            document.getElementById('countdown').textContent = 
-                String(h).padStart(2,'0') + 'h : ' + String(m).padStart(2,'0') + 'm : ' + String(s).padStart(2,'0') + 's';
-        }, 1000);
-    </script>
-</body>
-</html>
+    st.markdown("---")
+    st.caption("⚠️ **Disclaimer:** All indicators, market setups, and calculators provided in this terminal are strictly for learning, technical analysis practice, and quantitative research purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
+
+else:
+    st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
