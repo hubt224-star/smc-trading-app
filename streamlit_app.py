@@ -164,14 +164,14 @@ if st.session_state["authenticated"]:
     else:
         st.sidebar.success(f"✅ Welcome, {client_display}")
 else:
-    st.sidebar.warning("🔒 Scanner Locked (₹499)")
+    st.sidebar.warning("🔒 Scanner Locked (₹4999)")
 
 # Locked Screen View + Instant Passclaim Sandbox
 if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal Pro")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
-    st.markdown("### 🚀 Pay ₹499 & Get Instant Unique Password Access")
+    st.markdown("### 🚀 Pay ₹4999 & Get Instant Unique Password Access")
     
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
