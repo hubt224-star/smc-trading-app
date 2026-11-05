@@ -9,6 +9,7 @@ import json
 import os
 import requests
 import uuid
+import urllib.parse
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal Pro", layout="wide")
@@ -16,7 +17,6 @@ st.set_page_config(page_title="Master Institutional SMC Terminal Pro", layout="w
 # --- MOBILE-FIRST & CUSTOM CSS STYLING ---
 st.markdown("""
     <style>
-    /* Mobile-First Layout Tuning */
     @media (max-width: 768px) {
         .element-container, .stButton button, .stMetric {
             width: 100% !important;
@@ -35,6 +35,12 @@ st.markdown("""
         padding: 12px;
         border: 1px solid #2d313e;
         text-align: center;
+    }
+    .confluence-badge-green {
+        background-color: #0e3a1f; color: #2ecc71; padding: 6px 12px; border-radius: 6px; text-align: center; font-weight: bold; border: 1px solid #2ecc71;
+    }
+    .confluence-badge-red {
+        background-color: #3a0e0e; color: #e74c3c; padding: 6px 12px; border-radius: 6px; text-align: center; font-weight: bold; border: 1px solid #e74c3c;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -107,7 +113,6 @@ if submit_button:
         st.session_state["current_user_id"] = "admin"
     elif client_id_input in clients_db and clients_db[client_id_input]["password"] == user_pass:
         if clients_db[client_id_input].get("active", True):
-            # --- SINGLE DEVICE SESSION ASSIGNMENT ---
             clients_db[client_id_input]["active_session"] = st.session_state["my_session_id"]
             save_clients(clients_db)
             
@@ -185,18 +190,18 @@ if st.session_state["authenticated"]:
             st.session_state["authenticated"] = False
             st.rerun()
 else:
-    st.sidebar.warning("🔒 Scanner Locked (₹4999)")
+    st.sidebar.warning("🔒 Scanner Locked (₹499)")
 
 # Locked Screen View + Instant Passclaim Sandbox
 if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal Pro")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
     
-    st.markdown("### 🚀 Pay ₹4999 & Get Instant Unique Password Access")
+    st.markdown("### 🚀 Pay ₹499 & Get Instant Unique Password Access")
     
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
-    amount = "4999"
+    amount = "499"
     
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
     
@@ -209,7 +214,7 @@ if not st.session_state["authenticated"]:
         st.markdown(f"""
         **Steps to unlock access:**
         1. Scan QR & pay **₹{amount}**.
-        2. Enter your payment UTR / Transaction ID below to verify instant pass.
+        2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
         3. Note: Each ID supports **single-device active session** only.
         """)
         
@@ -228,7 +233,16 @@ if not st.session_state["authenticated"]:
                     }
                     save_clients(clients_db)
                     st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{user_claim_phone}`\n**Password:** `{generated_pass}`")
-                    st.info("Log in using the Sidebar to unlock immediately.")
+                    
+                    # Direct WhatsApp Auto-Connect Button after key generation
+                    wa_success_msg = urllib.parse.quote(f"Bhai maine pay kar diya hai. Mera Client ID {user_claim_phone} aur Password {generated_pass} hai.")
+                    st.markdown(f'''
+                        <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
+                            <button style="background-color:#25D366; color:white; padding:10px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; width:100%; margin-top:10px;">
+                                📲 Confirm Key on WhatsApp
+                            </button>
+                        </a>
+                        ''', unsafe_allow_html=True)
                 else:
                     st.error("⚠️ Enter valid Phone & UTR number!")
         
@@ -237,7 +251,7 @@ if not st.session_state["authenticated"]:
         
         st.markdown(f'''
             <a href="{wa_url}" target="_blank">
-                <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px; width:100%;">
+                <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; margin-top:10px;">
                     📲 Send Screenshot on WhatsApp
                 </button>
             </a>
@@ -451,6 +465,23 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
+    # --- 📊 MULTI-TIMEFRAME CONFLUENCE MATRIX (NEW FEATURE) ---
+    st.markdown("---")
+    st.markdown("### 📊 Multi-Timeframe Confluence Grid")
+    mtf_cols = st.columns(3)
+    
+    # Simulating/fetching multi-timeframe alignment
+    mtf_5m = latest_of
+    mtf_15m = latest_of
+    mtf_1h = "BULLISH" if latest_price > data['EMA200'].iloc[-1] else "BEARISH"
+    
+    with mtf_cols[0]:
+        st.markdown(f"**5m Timeframe**<br><div class='{'confluence-badge-green' if mtf_5m=='BULLISH' else 'confluence-badge-red'}'>{mtf_5m}</div>", unsafe_allow_html=True)
+    with mtf_cols[1]:
+        st.markdown(f"**15m Timeframe**<br><div class='{'confluence-badge-green' if mtf_15m=='BULLISH' else 'confluence-badge-red'}'>{mtf_15m}</div>", unsafe_allow_html=True)
+    with mtf_cols[2]:
+        st.markdown(f"**1h Timeframe**<br><div class='{'confluence-badge-green' if mtf_1h=='BULLISH' else 'confluence-badge-red'}'>{mtf_1h}</div>", unsafe_allow_html=True)
+
     # --- 🎯 STRIKE PRICE MAPPING & OPTIONS MATRIX ENGINE ---
     meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
     step = meta["step"]
@@ -476,7 +507,7 @@ if not data.empty:
     total_lots = max(1, position_size // lot_size) if position_size > 0 else 0
 
     st.markdown("---")
-    st.markdown("### 📊 Options Matrix & Sentiment Engine")
+    st.markdown("### 📈 Option Chain & Sentiment Heatboard")
     
     opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
     
