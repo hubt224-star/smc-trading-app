@@ -157,11 +157,11 @@ if not st.session_state["authenticated"]:
     
     col1, col2 = st.columns([1, 1.2])
     with col1:
-        st.image(qr_url, caption="Scan via GPay / PhonePe / Paytm (₹499)")
+        st.image(qr_url, caption="Scan via GPay / PhonePe / Paytm (₹4999)")
     with col2:
         st.markdown("""
         **How to get access:**
-        1. Scan QR and pay **₹499**.
+        1. Scan QR and pay **₹4999**.
         2. Enter your Phone & UTR below to auto-generate your secure single-device key.
         """)
         with st.expander("⚡ Instant Secure Key Generator"):
