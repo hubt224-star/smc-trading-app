@@ -24,6 +24,10 @@ st.markdown("""
         div[data-testid="stMetricValue"] {
             font-size: 1.2rem !important;
         }
+        /* Fix Table Overlap on Mobile */
+        .dataframe {
+            font-size: 11px !important;
+        }
     }
     .stButton button {
         border-radius: 8px;
@@ -234,7 +238,6 @@ if not st.session_state["authenticated"]:
                     save_clients(clients_db)
                     st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{user_claim_phone}`\n**Password:** `{generated_pass}`")
                     
-                    # Direct WhatsApp Auto-Connect Button after key generation
                     wa_success_msg = urllib.parse.quote(f"Bhai maine pay kar diya hai. Mera Client ID {user_claim_phone} aur Password {generated_pass} hai.")
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
@@ -465,12 +468,11 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # --- 📊 MULTI-TIMEFRAME CONFLUENCE MATRIX (NEW FEATURE) ---
+    # --- 📊 MULTI-TIMEFRAME CONFLUENCE MATRIX ---
     st.markdown("---")
     st.markdown("### 📊 Multi-Timeframe Confluence Grid")
     mtf_cols = st.columns(3)
     
-    # Simulating/fetching multi-timeframe alignment
     mtf_5m = latest_of
     mtf_15m = latest_of
     mtf_1h = "BULLISH" if latest_price > data['EMA200'].iloc[-1] else "BEARISH"
@@ -613,8 +615,12 @@ if not data.empty:
             return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
         return ''
 
-    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12)
-    
+    # Clean DataFrame & Round Decimals to Prevent Mobile Overlap/Glitch
+    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12).copy()
+    for col in ['Open', 'High', 'Low', 'Close']:
+        if col in table_df.columns:
+            table_df[col] = table_df[col].round(2)
+
     styled_table = table_df.style.map(color_table_setup, subset=['Setup'])
     st.dataframe(styled_table, use_container_width=True)
 
