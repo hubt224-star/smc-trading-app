@@ -194,18 +194,18 @@ if st.session_state["authenticated"]:
             st.session_state["authenticated"] = False
             st.rerun()
 else:
-    st.sidebar.warning("🔒 Scanner Locked (₹4999)")
+    st.sidebar.warning("🔒 Scanner Locked (₹2999 Diwali Offer)")
 
-# Locked Screen View + Instant Passclaim Sandbox
+# Locked Screen View + Instant Passclaim Sandbox (Diwali Offer Update)
 if not st.session_state["authenticated"]:
-    st.title("⚡ Institutional SMC Terminal Pro")
-    st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
+    st.title("🪔 Institutional SMC Terminal Pro - Diwali Special Offer")
+    st.error("🔒 Premium Scanner Locked! Claim Diwali Festive Offer to Get Access.")
     
-    st.markdown("### 🚀 Pay ₹4999 & Get Instant Unique Password Access")
+    st.markdown("### 🚀 Pay ₹2,999 (Flat 40% Off) & Get Instant Unique Password Access")
     
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
-    amount = "4999"
+    amount = "2999"
     
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
     
@@ -217,7 +217,7 @@ if not st.session_state["authenticated"]:
     with col2:
         st.markdown(f"""
         **Steps to unlock access:**
-        1. Scan QR & pay **₹{amount}**.
+        1. Scan QR & pay **₹{amount}** (Diwali Special Price).
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
         3. Note: Each ID supports **single-device active session** only.
         """)
@@ -238,7 +238,7 @@ if not st.session_state["authenticated"]:
                     save_clients(clients_db)
                     st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{user_claim_phone}`\n**Password:** `{generated_pass}`")
                     
-                    wa_success_msg = urllib.parse.quote(f"Bhai maine pay kar diya hai. Mera Client ID {user_claim_phone} aur Password {generated_pass} hai.")
+                    wa_success_msg = urllib.parse.quote(f"Bhai maine Diwali offer me pay kar diya hai. Mera Client ID {user_claim_phone} aur Password {generated_pass} hai.")
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
                             <button style="background-color:#25D366; color:white; padding:10px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; width:100%; margin-top:10px;">
@@ -249,7 +249,7 @@ if not st.session_state["authenticated"]:
                 else:
                     st.error("⚠️ Enter valid Phone & UTR number!")
         
-        wa_text = "Bhai%20maine%20499%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
+        wa_text = "Bhai%20maine%202999%20Diwali%20offer%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
         
         st.markdown(f'''
