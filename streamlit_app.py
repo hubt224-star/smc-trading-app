@@ -49,27 +49,71 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- UNIQUE CLIENT LOGIN DATABASE SETUP (WITH SESSION LOCK) ---
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP (PERSISTENT + SMOOTH SESSION LOCK) ---
 CLIENTS_FILE = "clients.json"
 
-if not os.path.exists(CLIENTS_FILE):
-    default_clients = {
-        "admin": {"name": "Mr. Yusuf (Admin)", "password": "SMCALGO@1999", "active": True, "admin": True, "active_session": None},
-        "9824467482": {"name": "Client User 1", "password": "Smc@tools1990", "active": True, "admin": False, "active_session": None}
-    }
-    with open(CLIENTS_FILE, "w") as f:
-        json.dump(default_clients, f, indent=4)
+DEFAULT_CLIENTS = {
+    "admin": {
+        "name": "Mr. Yusuf (Admin)",
+        "password": "SMCALGO@1999",
+        "active": True,
+        "admin": True,
+        "active_session": None,
+    },
+    "9824467482": {
+        "name": "Client User 1",
+        "password": "Smc@tools1990",
+        "active": True,
+        "admin": False,
+        "active_session": None,
+    },
+}
 
-def load_clients():
-    try:
-        with open(CLIENTS_FILE, "r") as f:
-            return json.load(f)
-    except:
-        return {}
+def normalize_client_id(raw_id):
+    cleaned = "".join(str(raw_id or "").split()).strip()
+    if cleaned.lower() == "admin":
+        return "admin"
+    digits = "".join(ch for ch in cleaned if ch.isdigit())
+    if len(digits) >= 10:
+        return digits[-10:]
+    return cleaned
 
 def save_clients(data):
-    with open(CLIENTS_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    try:
+        with open(CLIENTS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+    except Exception:
+        pass
+
+def load_clients():
+    if not os.path.exists(CLIENTS_FILE):
+        save_clients(DEFAULT_CLIENTS.copy())
+        return DEFAULT_CLIENTS.copy()
+    try:
+        with open(CLIENTS_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not data:
+            data = DEFAULT_CLIENTS.copy()
+            save_clients(data)
+    except Exception:
+        data = DEFAULT_CLIENTS.copy()
+        save_clients(data)
+
+    # Always keep admin intact
+    if "admin" not in data or not isinstance(data.get("admin"), dict):
+        data["admin"] = DEFAULT_CLIENTS["admin"].copy()
+
+    # Merge any clients configured in st.secrets["clients"] if present
+    try:
+        if "clients" in st.secrets and isinstance(st.secrets["clients"], dict):
+            for k, v in st.secrets["clients"].items():
+                nk = normalize_client_id(k)
+                if nk not in data and isinstance(v, dict):
+                    data[nk] = dict(v)
+    except Exception:
+        pass
+
+    return data
 
 clients_db = load_clients()
 
@@ -80,7 +124,7 @@ def send_telegram_alert(token, chat_id, message):
         payload = {"chat_id": chat_id, "text": message, "parse_mode": "Markdown"}
         try:
             requests.post(url, json=payload, timeout=5)
-        except Exception as e:
+        except Exception:
             pass
 
 # Sidebar Configuration
@@ -90,18 +134,20 @@ st.sidebar.markdown("---")
 st.sidebar.header("🔑 Unique Client Login")
 
 # Session State Initialization
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-if "broker_connected" not in st.session_state:
-    st.session_state["broker_connected"] = False
-if "saved_client_id" not in st.session_state:
-    st.session_state["saved_client_id"] = ""
-if "saved_api_key" not in st.session_state:
-    st.session_state["saved_api_key"] = ""
-if "last_alert_sent" not in st.session_state:
-    st.session_state["last_alert_sent"] = ""
-if "my_session_id" not in st.session_state:
-    st.session_state["my_session_id"] = str(uuid.uuid4())
+defaults = {
+    "authenticated": False,
+    "admin_mode": False,
+    "client_name": "",
+    "current_user_id": "",
+    "broker_connected": False,
+    "saved_client_id": "",
+    "saved_api_key": "",
+    "last_alert_sent": "",
+    "my_session_id": str(uuid.uuid4()),
+}
+for k, v in defaults.items():
+    if k not in st.session_state:
+        st.session_state[k] = v
 
 # Unique Client Login Form
 with st.sidebar.form(key="login_form"):
@@ -110,20 +156,27 @@ with st.sidebar.form(key="login_form"):
     submit_button = st.form_submit_button(label="Unlock Terminal")
 
 if submit_button:
-    if user_pass == "SMCALGO@1999" and client_id_input.lower() == "admin":
+    cid = normalize_client_id(client_id_input)
+    pwd = str(user_pass or "").strip()
+    db_fresh = load_clients()
+
+    if cid == "admin" and pwd == str(db_fresh["admin"].get("password", "SMCALGO@1999")).strip():
         st.session_state["authenticated"] = True
         st.session_state["admin_mode"] = True
-        st.session_state["client_name"] = "Mr. Yusuf (Admin)"
+        st.session_state["client_name"] = db_fresh["admin"].get("name", "Mr. Yusuf (Admin)")
         st.session_state["current_user_id"] = "admin"
-    elif client_id_input in clients_db and clients_db[client_id_input]["password"] == user_pass:
-        if clients_db[client_id_input].get("active", True):
-            clients_db[client_id_input]["active_session"] = st.session_state["my_session_id"]
-            save_clients(clients_db)
-            
+        st.rerun()
+    elif cid in db_fresh and str(db_fresh[cid].get("password", "")).strip() == pwd:
+        if db_fresh[cid].get("active", True):
+            db_fresh[cid]["active_session"] = st.session_state["my_session_id"]
+            save_clients(db_fresh)
+            clients_db = db_fresh
+
             st.session_state["authenticated"] = True
-            st.session_state["admin_mode"] = clients_db[client_id_input].get("admin", False)
-            st.session_state["client_name"] = clients_db[client_id_input]["name"]
-            st.session_state["current_user_id"] = client_id_input
+            st.session_state["admin_mode"] = db_fresh[cid].get("admin", False)
+            st.session_state["client_name"] = db_fresh[cid].get("name", cid)
+            st.session_state["current_user_id"] = cid
+            st.rerun()
         else:
             st.session_state["authenticated"] = False
             st.sidebar.error("❌ Your subscription has expired or account is blocked!")
@@ -136,7 +189,12 @@ if st.session_state["authenticated"]:
     curr_id = st.session_state.get("current_user_id")
     if curr_id and curr_id != "admin":
         db_fresh = load_clients()
-        if curr_id in db_fresh and db_fresh[curr_id].get("active_session") != st.session_state["my_session_id"]:
+        if curr_id not in db_fresh:
+            st.session_state["authenticated"] = False
+            st.warning("⚠️ Your account was removed by admin. Please contact support.")
+            st.rerun()
+        saved_session = db_fresh[curr_id].get("active_session")
+        if saved_session and saved_session != st.session_state["my_session_id"]:
             st.session_state["authenticated"] = False
             st.warning("⚠️ Your account was logged in from another device. Session terminated for security.")
             st.rerun()
@@ -144,44 +202,51 @@ if st.session_state["authenticated"]:
     client_display = st.session_state.get("client_name", "Authorized User")
     if st.session_state.get("admin_mode", False):
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
-        
+
         with st.sidebar.expander("🛠️ Admin Client Manager"):
             st.markdown("**Add New Client**")
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
             new_name = st.text_input("Client Name", key="new_client_name")
             new_pass = st.text_input("Assign Password", key="new_client_pass")
-            
+
             if st.button("Add Client to DB"):
-                if new_phone and new_name and new_pass:
-                    clients_db[new_phone] = {
-                        "name": new_name,
-                        "password": new_pass,
+                norm_phone = normalize_client_id(new_phone)
+                clean_name = str(new_name or "").strip()
+                clean_pass = str(new_pass or "").strip()
+                if norm_phone and clean_name and clean_pass:
+                    db_curr = load_clients()
+                    db_curr[norm_phone] = {
+                        "name": clean_name,
+                        "password": clean_pass,
                         "active": True,
                         "admin": False,
-                        "active_session": None
+                        "active_session": None,
                     }
-                    save_clients(clients_db)
-                    st.success(f"✅ Client {new_name} added successfully!")
+                    save_clients(db_curr)
+                    clients_db = db_curr
+                    st.success(f"✅ Client {clean_name} ({norm_phone}) added successfully!")
                     st.rerun()
                 else:
                     st.error("⚠️ Fill all fields!")
-            
+
             st.markdown("---")
             st.markdown("**Remove / Delete Client**")
-            non_admin_clients = [k for k in clients_db.keys() if k != "admin"]
+            db_curr = load_clients()
+            non_admin_clients = [k for k in db_curr.keys() if k != "admin"]
             if non_admin_clients:
                 client_to_remove = st.selectbox("Select Client to Remove", non_admin_clients)
                 if st.button("Delete Selected Client"):
-                    if client_to_remove in clients_db:
-                        del clients_db[client_to_remove]
-                        save_clients(clients_db)
+                    if client_to_remove in db_curr and client_to_remove != "admin":
+                        del db_curr[client_to_remove]
+                        save_clients(db_curr)
+                        clients_db = db_curr
                         st.success(f"✅ Client {client_to_remove} removed successfully!")
                         st.rerun()
             else:
                 st.caption("No custom clients found.")
-            
+
             st.markdown("---")
-            st.markdown(f"**Total Registered Clients:** {len(clients_db)}")
+            st.markdown(f"**Total Registered Clients:** {len(load_clients())}")
 
         with st.sidebar.expander("📢 Telegram Alerts Config"):
             tg_token = st.text_input("Bot Token", key="tg_token_val")
@@ -194,51 +259,55 @@ if st.session_state["authenticated"]:
             st.session_state["authenticated"] = False
             st.rerun()
 else:
-    st.sidebar.warning("🔒 Scanner Locked (₹2999 Diwali Offer)")
+    st.sidebar.warning("🔒 Scanner Locked (₹4999)")
 
-# Locked Screen View + Instant Passclaim Sandbox (Diwali Offer Update)
+# Locked Screen View + Instant Passclaim Sandbox (₹4999)
 if not st.session_state["authenticated"]:
-    st.title("🪔 Institutional SMC Terminal Pro - Diwali Special Offer")
-    st.error("🔒 Premium Scanner Locked! Claim Diwali Festive Offer to Get Access.")
-    
-    st.markdown("### 🚀 Pay ₹2,999 (Flat 40% Off) & Get Instant Unique Password Access")
-    
+    st.title("⚡ Institutional SMC Terminal Pro")
+    st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
+
+    st.markdown("### 🚀 Pay ₹4999 & Get Instant Unique Password Access")
+
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
-    amount = "2999"
-    
+    amount = "4999"
+
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
-    
+
     col1, col2 = st.columns([1, 1.2])
-    
+
     with col1:
         st.image(qr_url, caption="Scan using GPay / PhonePe / Paytm / BHIM")
-        
+
     with col2:
         st.markdown(f"""
         **Steps to unlock access:**
-        1. Scan QR & pay **₹{amount}** (Diwali Special Price).
+        1. Scan QR & pay **₹{amount}**.
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
         3. Note: Each ID supports **single-device active session** only.
         """)
-        
+
         with st.expander("⚡ Instant Pass Verification (Auto-Claim)", expanded=True):
             user_claim_phone = st.text_input("Your Mobile Number:")
             user_claim_utr = st.text_input("UPI Transaction Reference / UTR (12 Digits):")
             if st.button("Verify Payment & Claim Key"):
-                if len(user_claim_phone) >= 10 and len(user_claim_utr) >= 6:
-                    generated_pass = f"SMC{user_claim_utr[-4:]}"
-                    clients_db[user_claim_phone] = {
-                        "name": f"User {user_claim_phone[-4:]}",
+                norm_claim_phone = normalize_client_id(user_claim_phone)
+                clean_utr = "".join(ch for ch in str(user_claim_utr or "") if ch.isalnum())
+                if len(norm_claim_phone) >= 10 and len(clean_utr) >= 6:
+                    generated_pass = f"SMC{clean_utr[-4:]}"
+                    db_curr = load_clients()
+                    db_curr[norm_claim_phone] = {
+                        "name": f"User {norm_claim_phone[-4:]}",
                         "password": generated_pass,
                         "active": True,
                         "admin": False,
-                        "active_session": None
+                        "active_session": None,
                     }
-                    save_clients(clients_db)
-                    st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{user_claim_phone}`\n**Password:** `{generated_pass}`")
-                    
-                    wa_success_msg = urllib.parse.quote(f"Bhai maine Diwali offer me pay kar diya hai. Mera Client ID {user_claim_phone} aur Password {generated_pass} hai.")
+                    save_clients(db_curr)
+                    clients_db = db_curr
+                    st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{norm_claim_phone}`\n**Password:** `{generated_pass}`")
+
+                    wa_success_msg = urllib.parse.quote(f"Bhai maine 4999 pay kar diya hai. Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai.")
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
                             <button style="background-color:#25D366; color:white; padding:10px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; width:100%; margin-top:10px;">
@@ -248,10 +317,10 @@ if not st.session_state["authenticated"]:
                         ''', unsafe_allow_html=True)
                 else:
                     st.error("⚠️ Enter valid Phone & UTR number!")
-        
-        wa_text = "Bhai%20maine%202999%20Diwali%20offer%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
+
+        wa_text = "Bhai%20maine%204999%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
-        
+
         st.markdown(f'''
             <a href="{wa_url}" target="_blank">
                 <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; margin-top:10px;">
@@ -259,7 +328,7 @@ if not st.session_state["authenticated"]:
                 </button>
             </a>
             ''', unsafe_allow_html=True)
-            
+
     st.stop()
 
 # --- MULTI-BROKER API CONNECTION SECTION ---
@@ -272,12 +341,12 @@ with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=False):
     client_id_input_broker = st.text_input("Client ID / User ID", value=st.session_state["saved_client_id"], key="client_id_field")
     api_key_input = st.text_input("API Key / App ID", value=st.session_state["saved_api_key"], key="api_key_field")
     api_secret_input = st.text_input("API Secret / Password / MPIN", type="password", key="api_secret_field")
-    
+
     if st.button("Connect Demat Account", key="connect_demat_btn"):
         if client_id_input_broker and api_key_input:
             st.session_state["saved_client_id"] = client_id_input_broker
             st.session_state["saved_api_key"] = api_key_input
-            
+
             js_save = f"""
             <script>
             localStorage.setItem('angel_client_id', '{client_id_input_broker}');
@@ -370,7 +439,7 @@ if not data.empty:
     data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
     data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
     data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
-    
+
     # Order Flow Filter
     data['Order_Flow'] = "NEUTRAL"
     data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
@@ -393,13 +462,13 @@ if not data.empty:
     data['Consolidation'] = price_range < 0.002
 
     data['Setup'] = "NEUTRAL / NO SETUP"
-    
+
     buy_cond = (data['BOS_Bullish'] | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
     sell_cond = (data['BOS_Bearish'] | data['Bearish_FVG']) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 55) & (~data['Consolidation'])
-    
+
     data.loc[buy_cond, 'Setup'] = "BULLISH SETUP"
     data.loc[sell_cond, 'Setup'] = "BEARISH SETUP"
-    
+
     latest_setup = data['Setup'].iloc[-1]
     latest_price = data['Close'].iloc[-1]
     latest_atr = data['ATR'].iloc[-1]
@@ -433,7 +502,7 @@ if not data.empty:
     # Top Metric Bar
     row1_1, row1_2, row1_3, row1_4 = st.columns(4)
     row1_1.metric("Current Spot Price", f"₹ {latest_price:.2f}")
-    
+
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
@@ -464,7 +533,7 @@ if not data.empty:
                 ⏳ {latest_setup}
                 </div>""", unsafe_allow_html=True
             )
-        
+
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
@@ -472,11 +541,11 @@ if not data.empty:
     st.markdown("---")
     st.markdown("### 📊 Multi-Timeframe Confluence Grid")
     mtf_cols = st.columns(3)
-    
+
     mtf_5m = latest_of
     mtf_15m = latest_of
     mtf_1h = "BULLISH" if latest_price > data['EMA200'].iloc[-1] else "BEARISH"
-    
+
     with mtf_cols[0]:
         st.markdown(f"**5m Timeframe**<br><div class='{'confluence-badge-green' if mtf_5m=='BULLISH' else 'confluence-badge-red'}'>{mtf_5m}</div>", unsafe_allow_html=True)
     with mtf_cols[1]:
@@ -489,12 +558,12 @@ if not data.empty:
     step = meta["step"]
     lot_size = meta["lot"]
     tv_symbol = meta["tv_symbol"]
-    
+
     atm_strike = round(latest_price / step) * step
-    
+
     mapped_strike = atm_strike
     contract_type = "CE" if latest_setup == "BULLISH SETUP" else ("PE" if latest_setup == "BEARISH SETUP" else "CE/PE")
-    
+
     if latest_setup == "BULLISH SETUP":
         if "ITM" in strike_type:
             mapped_strike = atm_strike - step
@@ -510,9 +579,9 @@ if not data.empty:
 
     st.markdown("---")
     st.markdown("### 📈 Option Chain & Sentiment Heatboard")
-    
+
     opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
-    
+
     est_pcr = round(1.25 if latest_of == "BULLISH" else (0.75 if latest_of == "BEARISH" else 0.98), 2)
     pcr_bias = "Bullish (Put Writing)" if est_pcr > 1.0 else ("Bearish (Call Writing)" if est_pcr < 0.9 else "Neutral")
 
@@ -554,7 +623,7 @@ if not data.empty:
 
     # --- LIVE CHART ENGINE ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
-    
+
     if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
         st.success("⚡ **BSE Real-Time Data Active:** Streaming live 0-sec tick feeds via TradingView Engine.")
         tv_html = f"""
@@ -591,7 +660,7 @@ if not data.empty:
         fig.add_trace(go.Scatter(
             x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
         ))
-        
+
         if latest_setup != "NEUTRAL / NO SETUP":
             fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
             fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
