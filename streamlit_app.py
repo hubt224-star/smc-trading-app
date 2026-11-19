@@ -266,7 +266,7 @@ if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal Pro")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
 
-    st.markdown("### 🚀 Pay ₹4999 & Get Instant Unique Password Access")
+    st.markdown("### 🚀 Pay ₹9999 & Get Instant Unique Password Access")
 
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
