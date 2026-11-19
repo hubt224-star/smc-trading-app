@@ -259,9 +259,9 @@ if st.session_state["authenticated"]:
             st.session_state["authenticated"] = False
             st.rerun()
 else:
-    st.sidebar.warning("🔒 Scanner Locked (₹4999)")
+    st.sidebar.warning("🔒 Scanner Locked (₹9999)")
 
-# Locked Screen View + Instant Passclaim Sandbox (₹4999)
+# Locked Screen View + Instant Passclaim Sandbox (₹9999)
 if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal Pro")
     st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
@@ -270,7 +270,7 @@ if not st.session_state["authenticated"]:
 
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
-    amount = "4999"
+    amount = "9999"
 
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
 
