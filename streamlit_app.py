@@ -179,7 +179,7 @@ if submit_button:
             st.rerun()
         else:
             st.session_state["authenticated"] = False
-            st.sidebar.error("❌ Your subscription has expired or account is blocked!")
+            st.sidebar.error("❌ Aapka plan (1 Month ₹9999 / Lifetime ₹39999) expire ho chuka hai ya account block hai!")
     else:
         st.session_state["authenticated"] = False
         st.sidebar.error("❌ Incorrect Client ID or Password!")
@@ -191,12 +191,12 @@ if st.session_state["authenticated"]:
         db_fresh = load_clients()
         if curr_id not in db_fresh:
             st.session_state["authenticated"] = False
-            st.warning("⚠️ Your account was removed by admin. Please contact support.")
+            st.warning("⚠️ Aapka account remove kar diya gaya hai. Kripya support se sampark karein.")
             st.rerun()
         saved_session = db_fresh[curr_id].get("active_session")
         if saved_session and saved_session != st.session_state["my_session_id"]:
             st.session_state["authenticated"] = False
-            st.warning("⚠️ Your account was logged in from another device. Session terminated for security.")
+            st.warning("⚠️ Aapka account kisi aur device par login hua hai. Security ke liye yeh session band kar diya gaya hai.")
             st.rerun()
 
     client_display = st.session_state.get("client_name", "Authorized User")
@@ -208,6 +208,7 @@ if st.session_state["authenticated"]:
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
             new_name = st.text_input("Client Name", key="new_client_name")
             new_pass = st.text_input("Assign Password", key="new_client_pass")
+            new_plan = st.selectbox("Selected Plan", ["1 Month Plan (₹9999)", "Lifetime Plan (₹39999)"], key="new_client_plan")
 
             if st.button("Add Client to DB"):
                 norm_phone = normalize_client_id(new_phone)
@@ -218,13 +219,14 @@ if st.session_state["authenticated"]:
                     db_curr[norm_phone] = {
                         "name": clean_name,
                         "password": clean_pass,
+                        "plan": new_plan,
                         "active": True,
                         "admin": False,
                         "active_session": None,
                     }
                     save_clients(db_curr)
                     clients_db = db_curr
-                    st.success(f"✅ Client {clean_name} ({norm_phone}) added successfully!")
+                    st.success(f"✅ Client {clean_name} ({norm_phone}) [{new_plan}] added successfully!")
                     st.rerun()
                 else:
                     st.error("⚠️ Fill all fields!")
@@ -259,30 +261,39 @@ if st.session_state["authenticated"]:
             st.session_state["authenticated"] = False
             st.rerun()
 else:
-    st.sidebar.warning("🔒 Scanner Locked (₹9999)")
+    st.sidebar.warning("🔒 Scanner Locked (1M: ₹9999 | Life: ₹39999)")
 
-# Locked Screen View + Instant Passclaim Sandbox (₹9999)
+# Locked Screen View + Instant Passclaim Sandbox (1 Month ₹9999 / Lifetime ₹39999)
 if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Terminal Pro")
-    st.error("🔒 Premium Scanner Locked! Subscribe to Get Access.")
+    st.error("🔒 Premium Scanner Locked! 1 Month (₹9999) ya Lifetime (₹39999) plan lekar access paayein.")
 
-    st.markdown("### 🚀 Pay ₹9999 & Get Instant Unique Password Access")
+    st.markdown("### 🚀 Plans: 1 Month — ₹9999 | Lifetime — ₹39999")
+
+    selected_plan_option = st.radio(
+        "Apna Plan Select Karein:",
+        ["1 Month Plan — ₹9999", "Lifetime Plan — ₹39999"],
+        horizontal=True,
+    )
+    amount = "9999" if "9999" in selected_plan_option else "39999"
+    plan_label = "1 Month" if amount == "9999" else "Lifetime"
 
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
-    amount = "9999"
 
     qr_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=upi://pay?pa={upi_id}%26pn={payee_name}%26am={amount}%26cu=INR"
 
     col1, col2 = st.columns([1, 1.2])
 
     with col1:
-        st.image(qr_url, caption="Scan using GPay / PhonePe / Paytm / BHIM")
+        st.image(qr_url, caption=f"Scan QR for {plan_label} Plan (₹{amount}) — GPay / PhonePe / Paytm / BHIM")
 
     with col2:
         st.markdown(f"""
+        **Selected Plan:** **{plan_label} — ₹{amount}** *(1 Month: ₹9999 | Lifetime: ₹39999)*
+
         **Steps to unlock access:**
-        1. Scan QR & pay **₹{amount}**.
+        1. Scan QR & pay **₹{amount}** for **{plan_label}** plan.
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
         3. Note: Each ID supports **single-device active session** only.
         """)
@@ -299,15 +310,22 @@ if not st.session_state["authenticated"]:
                     db_curr[norm_claim_phone] = {
                         "name": f"User {norm_claim_phone[-4:]}",
                         "password": generated_pass,
+                        "plan": f"{plan_label} (₹{amount})",
                         "active": True,
                         "admin": False,
                         "active_session": None,
                     }
                     save_clients(db_curr)
                     clients_db = db_curr
-                    st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{norm_claim_phone}`\n**Password:** `{generated_pass}`")
+                    st.success(
+                        f"🎉 Verification Success ({plan_label} - ₹{amount})! Your Credentials:\n"
+                        f"**Client ID:** `{norm_claim_phone}`\n"
+                        f"**Password:** `{generated_pass}`"
+                    )
 
-                    wa_success_msg = urllib.parse.quote(f"Bhai maine 9999 pay kar diya hai. Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai.")
+                    wa_success_msg = urllib.parse.quote(
+                        f"Bhai maine {plan_label} plan ke liye ₹{amount} pay kar diya hai (1M: ₹9999 / Life: ₹39999). Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai."
+                    )
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
                             <button style="background-color:#25D366; color:white; padding:10px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; width:100%; margin-top:10px;">
@@ -318,13 +336,15 @@ if not st.session_state["authenticated"]:
                 else:
                     st.error("⚠️ Enter valid Phone & UTR number!")
 
-        wa_text = "Bhai%20maine%204999%20pay%20kar%20diya%20hai,%20mera%20unique%20scanner%20password%20dedo."
+        wa_text = urllib.parse.quote(
+            f"Bhai maine {plan_label} plan ke liye ₹{amount} pay kar diya hai (1 Month: ₹9999 | Lifetime: ₹39999), mera unique scanner password dedo."
+        )
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
 
         st.markdown(f'''
             <a href="{wa_url}" target="_blank">
                 <button style="background-color:#25D366; color:white; padding:12px 20px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:16px; width:100%; margin-top:10px;">
-                    📲 Send Screenshot on WhatsApp
+                    📲 Send Screenshot on WhatsApp (₹{amount})
                 </button>
             </a>
             ''', unsafe_allow_html=True)
