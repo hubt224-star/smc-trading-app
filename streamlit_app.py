@@ -307,7 +307,7 @@ if not st.session_state["authenticated"]:
                     clients_db = db_curr
                     st.success(f"🎉 Verification Success! Your Credentials:\n**Client ID:** `{norm_claim_phone}`\n**Password:** `{generated_pass}`")
 
-                    wa_success_msg = urllib.parse.quote(f"Bhai maine 4999 pay kar diya hai. Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai.")
+                    wa_success_msg = urllib.parse.quote(f"Bhai maine 9999 pay kar diya hai. Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai.")
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
                             <button style="background-color:#25D366; color:white; padding:10px 16px; border:none; border-radius:6px; cursor:pointer; font-weight:bold; font-size:14px; width:100%; margin-top:10px;">
