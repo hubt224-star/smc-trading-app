@@ -50,7 +50,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM LOCK) ---
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM LOCK + CLEAN DELETE) ---
 CLIENTS_FILE = "clients.json"
 CLAIMS_HISTORY_FILE = "claimed_keys_history.json"
 ONE_MONTH_DAYS = 30
@@ -146,6 +146,32 @@ def save_claims_history(hist):
         pass
     return cleaned
 
+def get_deleted_ids():
+    deleted = set()
+    if "runtime_deleted_ids" in st.session_state and isinstance(st.session_state["runtime_deleted_ids"], (list, set)):
+        for x in st.session_state["runtime_deleted_ids"]:
+            nx = normalize_client_id(x)
+            if nx and nx != "admin":
+                deleted.add(nx)
+    if os.path.exists(CLIENTS_FILE):
+        try:
+            with open(CLIENTS_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict) and isinstance(raw.get("_deleted_ids"), list):
+                for x in raw["_deleted_ids"]:
+                    nx = normalize_client_id(x)
+                    if nx and nx != "admin":
+                        deleted.add(nx)
+        except Exception:
+            pass
+    st.session_state["runtime_deleted_ids"] = sorted(deleted)
+    return deleted
+
+def set_deleted_ids(deleted_set):
+    cleaned = sorted({normalize_client_id(x) for x in (deleted_set or set()) if normalize_client_id(x) and normalize_client_id(x) != "admin"})
+    st.session_state["runtime_deleted_ids"] = cleaned
+    return set(cleaned)
+
 def normalize_record(cid, rec):
     rec = dict(rec) if isinstance(rec, dict) else {}
     if cid == "admin":
@@ -212,32 +238,47 @@ DEFAULT_CLIENTS = {
     },
 }
 
-def sync_to_secrets_buffer(data):
+def sync_to_runtime_cache(data, deleted_set=None):
     st.session_state["runtime_clients_cache"] = json.loads(json.dumps(data, default=str))
+    if deleted_set is not None:
+        set_deleted_ids(deleted_set)
 
-def save_clients(data):
+def save_clients(data, deleted_set=None):
+    if deleted_set is None:
+        deleted_set = get_deleted_ids()
+    else:
+        deleted_set = set_deleted_ids(deleted_set)
+
     cleaned_data = {}
     for k, v in (data or {}).items():
+        if k == "_deleted_ids":
+            continue
         nk = normalize_client_id(k)
-        if nk:
+        if nk and nk not in deleted_set:
             cleaned_data[nk] = normalize_record(nk, v)
+
     cleaned_data["admin"] = normalize_record("admin", cleaned_data.get("admin") or DEFAULT_CLIENTS["admin"])
 
-    sync_to_secrets_buffer(cleaned_data)
+    sync_to_runtime_cache(cleaned_data, deleted_set)
     try:
+        disk_payload = dict(cleaned_data)
+        disk_payload["_deleted_ids"] = sorted(deleted_set)
         with open(CLIENTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(cleaned_data, f, indent=4)
+            json.dump(disk_payload, f, indent=4)
     except Exception:
         pass
     return cleaned_data
 
 def load_clients():
+    deleted_set = get_deleted_ids()
     merged = {}
 
     if "runtime_clients_cache" in st.session_state and isinstance(st.session_state["runtime_clients_cache"], dict):
         for k, v in st.session_state["runtime_clients_cache"].items():
+            if k == "_deleted_ids":
+                continue
             nk = normalize_client_id(k)
-            if nk:
+            if nk and nk not in deleted_set:
                 merged[nk] = normalize_record(nk, v)
 
     file_data = {}
@@ -246,14 +287,25 @@ def load_clients():
             with open(CLIENTS_FILE, "r", encoding="utf-8") as f:
                 raw = json.load(f)
             if isinstance(raw, dict):
+                if isinstance(raw.get("_deleted_ids"), list):
+                    for x in raw["_deleted_ids"]:
+                        nx = normalize_client_id(x)
+                        if nx and nx != "admin":
+                            deleted_set.add(nx)
                 for k, v in raw.items():
+                    if k == "_deleted_ids":
+                        continue
                     nk = normalize_client_id(k)
-                    if nk and isinstance(v, dict):
+                    if nk and nk not in deleted_set and isinstance(v, dict):
                         file_data[nk] = normalize_record(nk, v)
         except Exception:
             file_data = {}
 
+    deleted_set = set_deleted_ids(deleted_set)
+
     for nk, rec in file_data.items():
+        if nk in deleted_set:
+            continue
         if nk not in merged:
             merged[nk] = rec
         else:
@@ -273,26 +325,30 @@ def load_clients():
         if "clients" in st.secrets and isinstance(st.secrets["clients"], dict):
             for k, v in st.secrets["clients"].items():
                 nk = normalize_client_id(k)
-                if nk not in merged and isinstance(v, dict):
+                if nk and nk not in deleted_set and nk not in merged and isinstance(v, dict):
                     merged[nk] = normalize_record(nk, v)
     except Exception:
         pass
 
     for def_k, def_v in DEFAULT_CLIENTS.items():
-        if def_k not in merged:
+        if def_k not in deleted_set and def_k not in merged:
             merged[def_k] = normalize_record(def_k, def_v)
 
     changed = False
-    for nk, rec in list(merged.items()):
-        norm_rec = normalize_record(nk, rec)
-        if norm_rec != rec:
+    for nk in list(merged.keys()):
+        if nk in deleted_set and nk != "admin":
+            del merged[nk]
+            changed = True
+            continue
+        norm_rec = normalize_record(nk, merged[nk])
+        if norm_rec != merged[nk]:
             merged[nk] = norm_rec
             changed = True
 
     if not os.path.exists(CLIENTS_FILE) or changed:
-        save_clients(merged)
+        save_clients(merged, deleted_set)
     else:
-        sync_to_secrets_buffer(merged)
+        sync_to_runtime_cache(merged, deleted_set)
 
     return merged
 
@@ -326,6 +382,7 @@ defaults = {
     "saved_api_key": "",
     "last_alert_sent": "",
     "my_session_id": str(uuid.uuid4()),
+    "admin_status_msg": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -390,6 +447,9 @@ if st.session_state["authenticated"]:
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
 
         with st.sidebar.expander("🛠️ Admin Client Manager", expanded=True):
+            if st.session_state.get("admin_status_msg"):
+                st.info(st.session_state["admin_status_msg"])
+
             st.markdown("**Add / Renew Client**")
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
             new_name = st.text_input("Client Name", key="new_client_name")
@@ -401,6 +461,10 @@ if st.session_state["authenticated"]:
                 clean_name = str(new_name or "").strip()
                 clean_pass = str(new_pass or "").strip()
                 if norm_phone and clean_name and clean_pass:
+                    deleted_set = get_deleted_ids()
+                    deleted_set.discard(norm_phone)
+                    set_deleted_ids(deleted_set)
+
                     db_curr = load_clients()
                     created_ts = iso_now()
                     expiry_ts = compute_expiry_for_plan(new_plan, created_ts)
@@ -414,9 +478,9 @@ if st.session_state["authenticated"]:
                         "admin": False,
                         "active_session": None,
                     }
-                    db_curr = save_clients(db_curr)
+                    db_curr = save_clients(db_curr, deleted_set)
                     clients_db = db_curr
-                    st.success(f"✅ Client {clean_name} ({norm_phone}) [{new_plan}] added successfully!")
+                    st.session_state["admin_status_msg"] = f"✅ Client {clean_name} ({norm_phone}) [{new_plan}] added!"
                     st.rerun()
                 else:
                     st.error("⚠️ Fill all fields!")
@@ -468,14 +532,17 @@ if st.session_state["authenticated"]:
                     tag = "♾️ Lifetime" if is_lifetime_plan(v.get("plan", "")) else "⏳ 1 Month"
                     label = f"{k} — {v.get('name', k)} [{tag}]"
                     client_options[label] = k
-                selected_label = st.selectbox("Select Client to Remove", list(client_options.keys()))
+                selected_label = st.selectbox("Select Client to Remove", list(client_options.keys()), key="remove_client_select")
                 client_to_remove = client_options[selected_label]
-                if st.button("Delete Selected Client"):
-                    if client_to_remove in db_curr and client_to_remove != "admin":
-                        del db_curr[client_to_remove]
-                        db_curr = save_clients(db_curr)
+                if st.button("Delete Selected Client", key="delete_client_btn"):
+                    if client_to_remove and client_to_remove != "admin":
+                        db_curr = load_clients()
+                        db_curr.pop(client_to_remove, None)
+                        deleted_set = get_deleted_ids()
+                        deleted_set.add(client_to_remove)
+                        db_curr = save_clients(db_curr, deleted_set)
                         clients_db = db_curr
-                        st.success(f"✅ Client {client_to_remove} removed successfully!")
+                        st.session_state["admin_status_msg"] = f"🗑️ Client {client_to_remove} permanently deleted!"
                         st.rerun()
             else:
                 st.caption("No custom clients found.")
@@ -538,10 +605,11 @@ if not st.session_state["authenticated"]:
                 clean_utr = normalize_utr(user_claim_utr)
                 hist_curr = load_claims_history()
                 db_curr = load_clients()
+                deleted_set = get_deleted_ids()
 
                 if len(norm_claim_phone) < 10 or len(clean_utr) < 6:
                     st.error("⚠️ Enter valid Phone & UTR number!")
-                elif norm_claim_phone in hist_curr["phones"] or norm_claim_phone in db_curr:
+                elif norm_claim_phone in hist_curr["phones"] or norm_claim_phone in db_curr or norm_claim_phone in deleted_set:
                     st.error("🚫 Is Mobile Number se key pehle hi generate ho chuki hai! Dubara generate nahi hogi.")
                 elif clean_utr in hist_curr["utrs"]:
                     st.error("🚫 Ye UTR Number pehle hi use ho chuka hai! Same UTR se dubara key generate nahi hogi.")
@@ -560,7 +628,7 @@ if not st.session_state["authenticated"]:
                         "admin": False,
                         "active_session": None,
                     }
-                    db_curr = save_clients(db_curr)
+                    db_curr = save_clients(db_curr, deleted_set)
                     clients_db = db_curr
 
                     hist_curr["phones"].append(norm_claim_phone)
