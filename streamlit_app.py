@@ -60,9 +60,6 @@ def now_utc():
 def iso_now():
     return now_utc().isoformat()
 
-def iso_plus_days(days):
-    return (now_utc() + timedelta(days=days)).isoformat()
-
 def is_lifetime_plan(plan_text):
     p = str(plan_text or "").lower()
     return "lifetime" in p or "life" in p
@@ -79,6 +76,26 @@ def compute_expiry_for_plan(plan_text, from_iso=None):
         except Exception:
             base_dt = now_utc()
     return (base_dt + timedelta(days=ONE_MONTH_DAYS)).isoformat()
+
+def format_expiry_badge(rec):
+    plan = rec.get("plan", "")
+    if is_lifetime_plan(plan):
+        return "♾️ Lifetime (Active)"
+    exp_str = rec.get("expires_at")
+    if not exp_str:
+        return "⏳ 30 Days"
+    try:
+        exp_dt = datetime.fromisoformat(str(exp_str))
+        if exp_dt.tzinfo is None:
+            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+        rem = exp_dt - now_utc()
+        if rem.total_seconds() <= 0:
+            return "❌ Expired"
+        days_left = rem.days
+        date_txt = exp_dt.strftime("%d %b %Y")
+        return f"📅 {days_left}d left ({date_txt})"
+    except Exception:
+        return "⏳ 30 Days"
 
 def normalize_client_id(raw_id):
     cleaned = "".join(str(raw_id or "").split()).strip()
@@ -105,7 +122,6 @@ def normalize_record(cid, rec):
     created_at = rec.get("created_at") or iso_now()
     expires_at = rec.get("expires_at")
 
-    # Backfill expires_at if missing
     if not is_lifetime_plan(plan) and not expires_at:
         expires_at = compute_expiry_for_plan(plan, created_at)
     elif is_lifetime_plan(plan):
@@ -113,7 +129,6 @@ def normalize_record(cid, rec):
 
     active = bool(rec.get("active", True))
 
-    # Auto-expire 1-month plan after 30 days
     if not is_lifetime_plan(plan) and expires_at:
         try:
             exp_dt = datetime.fromisoformat(str(expires_at))
@@ -158,7 +173,6 @@ DEFAULT_CLIENTS = {
 }
 
 def sync_to_secrets_buffer(data):
-    """Keeps a runtime copy in session_state so cloud reruns never wipe newly added clients."""
     st.session_state["runtime_clients_cache"] = json.loads(json.dumps(data, default=str))
 
 def save_clients(data):
@@ -180,14 +194,12 @@ def save_clients(data):
 def load_clients():
     merged = {}
 
-    # 1. Start from runtime cache if present in current session
     if "runtime_clients_cache" in st.session_state and isinstance(st.session_state["runtime_clients_cache"], dict):
         for k, v in st.session_state["runtime_clients_cache"].items():
             nk = normalize_client_id(k)
             if nk:
                 merged[nk] = normalize_record(nk, v)
 
-    # 2. Load from local clients.json if present
     file_data = {}
     if os.path.exists(CLIENTS_FILE):
         try:
@@ -201,7 +213,6 @@ def load_clients():
         except Exception:
             file_data = {}
 
-    # Merge file_data (preferring newer created_at if both exist)
     for nk, rec in file_data.items():
         if nk not in merged:
             merged[nk] = rec
@@ -218,7 +229,6 @@ def load_clients():
             except Exception:
                 merged[nk] = rec
 
-    # 3. Merge any clients configured in st.secrets["clients"] if present
     try:
         if "clients" in st.secrets and isinstance(st.secrets["clients"], dict):
             for k, v in st.secrets["clients"].items():
@@ -228,12 +238,10 @@ def load_clients():
     except Exception:
         pass
 
-    # 4. Ensure default admin & default client exist only if not already present
     for def_k, def_v in DEFAULT_CLIENTS.items():
         if def_k not in merged:
             merged[def_k] = normalize_record(def_k, def_v)
 
-    # Normalize & persist auto-expiry updates if any 1-month plan expired
     changed = False
     for nk, rec in list(merged.items()):
         norm_rec = normalize_record(nk, rec)
@@ -340,7 +348,7 @@ if st.session_state["authenticated"]:
     if st.session_state.get("admin_mode", False):
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
 
-        with st.sidebar.expander("🛠️ Admin Client Manager"):
+        with st.sidebar.expander("🛠️ Admin Client Manager", expanded=True):
             st.markdown("**Add / Renew Client**")
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
             new_name = st.text_input("Client Name", key="new_client_name")
@@ -373,11 +381,54 @@ if st.session_state["authenticated"]:
                     st.error("⚠️ Fill all fields!")
 
             st.markdown("---")
-            st.markdown("**Remove / Delete Client**")
+            st.markdown("**📋 Client Directory (Plan Wise)**")
             db_curr = load_clients()
-            non_admin_clients = [k for k in db_curr.keys() if k != "admin"]
-            if non_admin_clients:
-                client_to_remove = st.selectbox("Select Client to Remove", non_admin_clients)
+            non_admin_items = [(k, v) for k, v in db_curr.items() if k != "admin"]
+
+            one_month_list = [(k, v) for k, v in non_admin_items if not is_lifetime_plan(v.get("plan", ""))]
+            lifetime_list = [(k, v) for k, v in non_admin_items if is_lifetime_plan(v.get("plan", ""))]
+
+            st.caption(f"⏳ 1 Month: **{len(one_month_list)}** | ♾️ Lifetime: **{len(lifetime_list)}**")
+
+            filter_choice = st.radio(
+                "Filter Clients:",
+                ["All", "1 Month (₹9999)", "Lifetime (₹39999)"],
+                horizontal=True,
+                key="admin_client_filter"
+            )
+
+            if filter_choice == "1 Month (₹9999)":
+                filtered_items = one_month_list
+            elif filter_choice == "Lifetime (₹39999)":
+                filtered_items = lifetime_list
+            else:
+                filtered_items = non_admin_items
+
+            if filtered_items:
+                rows = []
+                for cid_key, info in filtered_items:
+                    p_type = "♾️ Lifetime" if is_lifetime_plan(info.get("plan", "")) else "⏳ 1 Month"
+                    rows.append({
+                        "ID": cid_key,
+                        "Name": info.get("name", cid_key),
+                        "Pass": info.get("password", ""),
+                        "Plan": p_type,
+                        "Status": format_expiry_badge(info),
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            else:
+                st.caption("Is category mein koi client nahi hai.")
+
+            st.markdown("---")
+            st.markdown("**Remove / Delete Client**")
+            if non_admin_items:
+                client_options = {}
+                for k, v in non_admin_items:
+                    tag = "♾️ Lifetime" if is_lifetime_plan(v.get("plan", "")) else "⏳ 1 Month"
+                    label = f"{k} — {v.get('name', k)} [{tag}]"
+                    client_options[label] = k
+                selected_label = st.selectbox("Select Client to Remove", list(client_options.keys()))
+                client_to_remove = client_options[selected_label]
                 if st.button("Delete Selected Client"):
                     if client_to_remove in db_curr and client_to_remove != "admin":
                         del db_curr[client_to_remove]
@@ -388,16 +439,15 @@ if st.session_state["authenticated"]:
             else:
                 st.caption("No custom clients found.")
 
-            st.markdown("---")
-            st.markdown(f"**Total Registered Clients:** {len(load_clients())}")
-
         with st.sidebar.expander("📢 Telegram Alerts Config"):
             tg_token = st.text_input("Bot Token", key="tg_token_val")
             tg_chat = st.text_input("Chat / Channel ID", key="tg_chat_val")
             st.session_state["tg_token"] = tg_token
             st.session_state["tg_chat"] = tg_chat
     else:
+        curr_rec = load_clients().get(curr_id, {})
         st.sidebar.success(f"✅ Welcome, {client_display}")
+        st.sidebar.caption(f"Plan: {format_expiry_badge(curr_rec)}")
         if st.sidebar.button("Logout"):
             st.session_state["authenticated"] = False
             st.rerun()
