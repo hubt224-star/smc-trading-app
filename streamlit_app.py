@@ -50,8 +50,9 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME PERSISTENCE) ---
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM LOCK) ---
 CLIENTS_FILE = "clients.json"
+CLAIMS_HISTORY_FILE = "claimed_keys_history.json"
 ONE_MONTH_DAYS = 30
 
 def now_utc():
@@ -104,6 +105,45 @@ def normalize_client_id(raw_id):
     digits = "".join(ch for ch in cleaned if ch.isdigit())
     if len(digits) >= 10:
         return digits[-10:]
+    return cleaned
+
+def normalize_utr(raw_utr):
+    return "".join(ch for ch in str(raw_utr or "").strip().upper() if ch.isalnum())
+
+def load_claims_history():
+    default_hist = {"phones": [], "utrs": []}
+    hist = {"phones": [], "utrs": []}
+
+    if "runtime_claims_history" in st.session_state and isinstance(st.session_state["runtime_claims_history"], dict):
+        hist["phones"].extend(st.session_state["runtime_claims_history"].get("phones", []))
+        hist["utrs"].extend(st.session_state["runtime_claims_history"].get("utrs", []))
+
+    if os.path.exists(CLAIMS_HISTORY_FILE):
+        try:
+            with open(CLAIMS_HISTORY_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                hist["phones"].extend(raw.get("phones", []))
+                hist["utrs"].extend(raw.get("utrs", []))
+        except Exception:
+            pass
+
+    hist["phones"] = sorted({normalize_client_id(p) for p in hist["phones"] if normalize_client_id(p)})
+    hist["utrs"] = sorted({normalize_utr(u) for u in hist["utrs"] if normalize_utr(u)})
+    st.session_state["runtime_claims_history"] = hist
+    return hist if (hist["phones"] or hist["utrs"]) else default_hist
+
+def save_claims_history(hist):
+    cleaned = {
+        "phones": sorted({normalize_client_id(p) for p in (hist or {}).get("phones", []) if normalize_client_id(p)}),
+        "utrs": sorted({normalize_utr(u) for u in (hist or {}).get("utrs", []) if normalize_utr(u)}),
+    }
+    st.session_state["runtime_claims_history"] = cleaned
+    try:
+        with open(CLAIMS_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(cleaned, f, indent=4)
+    except Exception:
+        pass
     return cleaned
 
 def normalize_record(cid, rec):
@@ -257,6 +297,7 @@ def load_clients():
     return merged
 
 clients_db = load_clients()
+claims_history = load_claims_history()
 
 # Telegram Alert Function
 def send_telegram_alert(token, chat_id, message):
@@ -486,7 +527,7 @@ if not st.session_state["authenticated"]:
         **Steps to unlock access:**
         1. Scan QR & pay **₹{amount}** for **{plan_label}** plan.
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
-        3. Note: Each ID supports **single-device active session** only. 1 Month plan auto-expires after 30 days; Lifetime plan stays active until manually deleted.
+        3. Note: Each ID supports **single-device active session** only. **One-time claim only** — same Phone ya UTR se dubara key generate nahi hogi.
         """)
 
         with st.expander("⚡ Instant Pass Verification (Auto-Claim)", expanded=True):
@@ -494,10 +535,18 @@ if not st.session_state["authenticated"]:
             user_claim_utr = st.text_input("UPI Transaction Reference / UTR (12 Digits):")
             if st.button("Verify Payment & Claim Key"):
                 norm_claim_phone = normalize_client_id(user_claim_phone)
-                clean_utr = "".join(ch for ch in str(user_claim_utr or "") if ch.isalnum())
-                if len(norm_claim_phone) >= 10 and len(clean_utr) >= 6:
+                clean_utr = normalize_utr(user_claim_utr)
+                hist_curr = load_claims_history()
+                db_curr = load_clients()
+
+                if len(norm_claim_phone) < 10 or len(clean_utr) < 6:
+                    st.error("⚠️ Enter valid Phone & UTR number!")
+                elif norm_claim_phone in hist_curr["phones"] or norm_claim_phone in db_curr:
+                    st.error("🚫 Is Mobile Number se key pehle hi generate ho chuki hai! Dubara generate nahi hogi.")
+                elif clean_utr in hist_curr["utrs"]:
+                    st.error("🚫 Ye UTR Number pehle hi use ho chuka hai! Same UTR se dubara key generate nahi hogi.")
+                else:
                     generated_pass = f"SMC{clean_utr[-4:]}"
-                    db_curr = load_clients()
                     full_plan_name = f"{plan_label} Plan (₹{amount})"
                     created_ts = iso_now()
                     expiry_ts = compute_expiry_for_plan(full_plan_name, created_ts)
@@ -513,6 +562,11 @@ if not st.session_state["authenticated"]:
                     }
                     db_curr = save_clients(db_curr)
                     clients_db = db_curr
+
+                    hist_curr["phones"].append(norm_claim_phone)
+                    hist_curr["utrs"].append(clean_utr)
+                    claims_history = save_claims_history(hist_curr)
+
                     st.success(
                         f"🎉 Verification Success ({plan_label} - ₹{amount})! Your Credentials:\n"
                         f"**Client ID:** `{norm_claim_phone}`\n"
@@ -529,8 +583,6 @@ if not st.session_state["authenticated"]:
                             </button>
                         </a>
                         ''', unsafe_allow_html=True)
-                else:
-                    st.error("⚠️ Enter valid Phone & UTR number!")
 
         wa_text = urllib.parse.quote(
             f"Bhai maine {plan_label} plan ke liye ₹{amount} pay kar diya hai (1 Month: ₹9999 | Lifetime: ₹39999), mera unique scanner password dedo."
