@@ -371,6 +371,10 @@ st.sidebar.caption("Mentor: Mr. Yusuf")
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Unique Client Login")
 
+# Read persisted session token from URL query params on page refresh
+qp = st.query_params
+persisted_sid = str(qp.get("sid", "") or "").strip()
+
 # Session State Initialization
 defaults = {
     "authenticated": False,
@@ -381,12 +385,31 @@ defaults = {
     "saved_client_id": "",
     "saved_api_key": "",
     "last_alert_sent": "",
-    "my_session_id": str(uuid.uuid4()),
+    "my_session_id": persisted_sid if persisted_sid else str(uuid.uuid4()),
     "admin_status_msg": "",
 }
 for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
+
+# Auto-restore session after browser refresh if sid matches a valid active user/admin
+if not st.session_state["authenticated"] and persisted_sid:
+    db_restore = load_clients()
+    if persisted_sid == "admin_session_" + str(db_restore["admin"].get("password", "SMCALGO@1999")).strip():
+        st.session_state["authenticated"] = True
+        st.session_state["admin_mode"] = True
+        st.session_state["client_name"] = db_restore["admin"].get("name", "Mr. Yusuf (Admin)")
+        st.session_state["current_user_id"] = "admin"
+        st.session_state["my_session_id"] = persisted_sid
+    else:
+        for uid_key, u_rec in db_restore.items():
+            if uid_key != "admin" and u_rec.get("active", True) and u_rec.get("active_session") == persisted_sid:
+                st.session_state["authenticated"] = True
+                st.session_state["admin_mode"] = bool(u_rec.get("admin", False))
+                st.session_state["client_name"] = u_rec.get("name", uid_key)
+                st.session_state["current_user_id"] = uid_key
+                st.session_state["my_session_id"] = persisted_sid
+                break
 
 # Unique Client Login Form
 with st.sidebar.form(key="login_form"):
@@ -400,14 +423,18 @@ if submit_button:
     db_fresh = load_clients()
 
     if cid == "admin" and pwd == str(db_fresh["admin"].get("password", "SMCALGO@1999")).strip():
+        admin_sid = "admin_session_" + pwd
         st.session_state["authenticated"] = True
         st.session_state["admin_mode"] = True
         st.session_state["client_name"] = db_fresh["admin"].get("name", "Mr. Yusuf (Admin)")
         st.session_state["current_user_id"] = "admin"
+        st.session_state["my_session_id"] = admin_sid
+        st.query_params["sid"] = admin_sid
         st.rerun()
     elif cid in db_fresh and str(db_fresh[cid].get("password", "")).strip() == pwd:
         if db_fresh[cid].get("active", True):
-            db_fresh[cid]["active_session"] = st.session_state["my_session_id"]
+            new_sid = st.session_state["my_session_id"] or str(uuid.uuid4())
+            db_fresh[cid]["active_session"] = new_sid
             save_clients(db_fresh)
             clients_db = db_fresh
 
@@ -415,6 +442,8 @@ if submit_button:
             st.session_state["admin_mode"] = db_fresh[cid].get("admin", False)
             st.session_state["client_name"] = db_fresh[cid].get("name", cid)
             st.session_state["current_user_id"] = cid
+            st.session_state["my_session_id"] = new_sid
+            st.query_params["sid"] = new_sid
             st.rerun()
         else:
             st.session_state["authenticated"] = False
@@ -430,15 +459,21 @@ if st.session_state["authenticated"]:
         db_fresh = load_clients()
         if curr_id not in db_fresh:
             st.session_state["authenticated"] = False
+            if "sid" in st.query_params:
+                del st.query_params["sid"]
             st.warning("⚠️ Aapka account remove kar diya gaya hai. Kripya support se sampark karein.")
             st.rerun()
         if not db_fresh[curr_id].get("active", True):
             st.session_state["authenticated"] = False
+            if "sid" in st.query_params:
+                del st.query_params["sid"]
             st.warning("⚠️ Aapka 1 Month plan expire ho chuka hai. Kripya renewal ke liye sampark karein.")
             st.rerun()
         saved_session = db_fresh[curr_id].get("active_session")
         if saved_session and saved_session != st.session_state["my_session_id"]:
             st.session_state["authenticated"] = False
+            if "sid" in st.query_params:
+                del st.query_params["sid"]
             st.warning("⚠️ Aapka account kisi aur device par login hua hai. Security ke liye yeh session band kar diya gaya hai.")
             st.rerun()
 
@@ -547,6 +582,13 @@ if st.session_state["authenticated"]:
             else:
                 st.caption("No custom clients found.")
 
+            if st.sidebar.button("Logout Admin"):
+                st.session_state["authenticated"] = False
+                st.session_state["admin_mode"] = False
+                if "sid" in st.query_params:
+                    del st.query_params["sid"]
+                st.rerun()
+
         with st.sidebar.expander("📢 Telegram Alerts Config"):
             tg_token = st.text_input("Bot Token", key="tg_token_val")
             tg_chat = st.text_input("Chat / Channel ID", key="tg_chat_val")
@@ -558,6 +600,8 @@ if st.session_state["authenticated"]:
         st.sidebar.caption(f"Plan: {format_expiry_badge(curr_rec)}")
         if st.sidebar.button("Logout"):
             st.session_state["authenticated"] = False
+            if "sid" in st.query_params:
+                del st.query_params["sid"]
             st.rerun()
 else:
     st.sidebar.warning("🔒 Scanner Locked (1M: ₹9999 | Life: ₹39999)")
