@@ -10,6 +10,7 @@ import os
 import requests
 import uuid
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal Pro", layout="wide")
@@ -49,25 +50,35 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- UNIQUE CLIENT LOGIN DATABASE SETUP (PERSISTENT + SMOOTH SESSION LOCK) ---
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME PERSISTENCE) ---
 CLIENTS_FILE = "clients.json"
+ONE_MONTH_DAYS = 30
 
-DEFAULT_CLIENTS = {
-    "admin": {
-        "name": "Mr. Yusuf (Admin)",
-        "password": "SMCALGO@1999",
-        "active": True,
-        "admin": True,
-        "active_session": None,
-    },
-    "9824467482": {
-        "name": "Client User 1",
-        "password": "Smc@tools1990",
-        "active": True,
-        "admin": False,
-        "active_session": None,
-    },
-}
+def now_utc():
+    return datetime.now(timezone.utc)
+
+def iso_now():
+    return now_utc().isoformat()
+
+def iso_plus_days(days):
+    return (now_utc() + timedelta(days=days)).isoformat()
+
+def is_lifetime_plan(plan_text):
+    p = str(plan_text or "").lower()
+    return "lifetime" in p or "life" in p
+
+def compute_expiry_for_plan(plan_text, from_iso=None):
+    if is_lifetime_plan(plan_text):
+        return None
+    base_dt = now_utc()
+    if from_iso:
+        try:
+            base_dt = datetime.fromisoformat(str(from_iso))
+            if base_dt.tzinfo is None:
+                base_dt = base_dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            base_dt = now_utc()
+    return (base_dt + timedelta(days=ONE_MONTH_DAYS)).isoformat()
 
 def normalize_client_id(raw_id):
     cleaned = "".join(str(raw_id or "").split()).strip()
@@ -78,42 +89,164 @@ def normalize_client_id(raw_id):
         return digits[-10:]
     return cleaned
 
+def normalize_record(cid, rec):
+    rec = dict(rec) if isinstance(rec, dict) else {}
+    if cid == "admin":
+        rec.setdefault("name", "Mr. Yusuf (Admin)")
+        rec.setdefault("password", "SMCALGO@1999")
+        rec["plan"] = "Lifetime Plan (Admin)"
+        rec["active"] = True
+        rec["admin"] = True
+        rec["expires_at"] = None
+        rec.setdefault("active_session", None)
+        return rec
+
+    plan = rec.get("plan", "1 Month Plan (₹9999)")
+    created_at = rec.get("created_at") or iso_now()
+    expires_at = rec.get("expires_at")
+
+    # Backfill expires_at if missing
+    if not is_lifetime_plan(plan) and not expires_at:
+        expires_at = compute_expiry_for_plan(plan, created_at)
+    elif is_lifetime_plan(plan):
+        expires_at = None
+
+    active = bool(rec.get("active", True))
+
+    # Auto-expire 1-month plan after 30 days
+    if not is_lifetime_plan(plan) and expires_at:
+        try:
+            exp_dt = datetime.fromisoformat(str(expires_at))
+            if exp_dt.tzinfo is None:
+                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
+            if now_utc() >= exp_dt:
+                active = False
+        except Exception:
+            pass
+
+    rec["name"] = rec.get("name", cid)
+    rec["password"] = str(rec.get("password", "")).strip()
+    rec["plan"] = plan
+    rec["created_at"] = created_at
+    rec["expires_at"] = expires_at
+    rec["active"] = active
+    rec["admin"] = bool(rec.get("admin", False))
+    rec.setdefault("active_session", None)
+    return rec
+
+DEFAULT_CLIENTS = {
+    "admin": {
+        "name": "Mr. Yusuf (Admin)",
+        "password": "SMCALGO@1999",
+        "plan": "Lifetime Plan (Admin)",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "expires_at": None,
+        "active": True,
+        "admin": True,
+        "active_session": None,
+    },
+    "9824467482": {
+        "name": "Client User 1",
+        "password": "Smc@tools1990",
+        "plan": "Lifetime Plan (₹39999)",
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "expires_at": None,
+        "active": True,
+        "admin": False,
+        "active_session": None,
+    },
+}
+
+def sync_to_secrets_buffer(data):
+    """Keeps a runtime copy in session_state so cloud reruns never wipe newly added clients."""
+    st.session_state["runtime_clients_cache"] = json.loads(json.dumps(data, default=str))
+
 def save_clients(data):
+    cleaned_data = {}
+    for k, v in (data or {}).items():
+        nk = normalize_client_id(k)
+        if nk:
+            cleaned_data[nk] = normalize_record(nk, v)
+    cleaned_data["admin"] = normalize_record("admin", cleaned_data.get("admin") or DEFAULT_CLIENTS["admin"])
+
+    sync_to_secrets_buffer(cleaned_data)
     try:
         with open(CLIENTS_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+            json.dump(cleaned_data, f, indent=4)
     except Exception:
         pass
+    return cleaned_data
 
 def load_clients():
-    if not os.path.exists(CLIENTS_FILE):
-        save_clients(DEFAULT_CLIENTS.copy())
-        return DEFAULT_CLIENTS.copy()
-    try:
-        with open(CLIENTS_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict) or not data:
-            data = DEFAULT_CLIENTS.copy()
-            save_clients(data)
-    except Exception:
-        data = DEFAULT_CLIENTS.copy()
-        save_clients(data)
+    merged = {}
 
-    # Always keep admin intact
-    if "admin" not in data or not isinstance(data.get("admin"), dict):
-        data["admin"] = DEFAULT_CLIENTS["admin"].copy()
+    # 1. Start from runtime cache if present in current session
+    if "runtime_clients_cache" in st.session_state and isinstance(st.session_state["runtime_clients_cache"], dict):
+        for k, v in st.session_state["runtime_clients_cache"].items():
+            nk = normalize_client_id(k)
+            if nk:
+                merged[nk] = normalize_record(nk, v)
 
-    # Merge any clients configured in st.secrets["clients"] if present
+    # 2. Load from local clients.json if present
+    file_data = {}
+    if os.path.exists(CLIENTS_FILE):
+        try:
+            with open(CLIENTS_FILE, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            if isinstance(raw, dict):
+                for k, v in raw.items():
+                    nk = normalize_client_id(k)
+                    if nk and isinstance(v, dict):
+                        file_data[nk] = normalize_record(nk, v)
+        except Exception:
+            file_data = {}
+
+    # Merge file_data (preferring newer created_at if both exist)
+    for nk, rec in file_data.items():
+        if nk not in merged:
+            merged[nk] = rec
+        else:
+            try:
+                t_old = datetime.fromisoformat(str(merged[nk].get("created_at", "1970-01-01T00:00:00+00:00")))
+                t_new = datetime.fromisoformat(str(rec.get("created_at", "1970-01-01T00:00:00+00:00")))
+                if t_old.tzinfo is None:
+                    t_old = t_old.replace(tzinfo=timezone.utc)
+                if t_new.tzinfo is None:
+                    t_new = t_new.replace(tzinfo=timezone.utc)
+                if t_new >= t_old:
+                    merged[nk] = rec
+            except Exception:
+                merged[nk] = rec
+
+    # 3. Merge any clients configured in st.secrets["clients"] if present
     try:
         if "clients" in st.secrets and isinstance(st.secrets["clients"], dict):
             for k, v in st.secrets["clients"].items():
                 nk = normalize_client_id(k)
-                if nk not in data and isinstance(v, dict):
-                    data[nk] = dict(v)
+                if nk not in merged and isinstance(v, dict):
+                    merged[nk] = normalize_record(nk, v)
     except Exception:
         pass
 
-    return data
+    # 4. Ensure default admin & default client exist only if not already present
+    for def_k, def_v in DEFAULT_CLIENTS.items():
+        if def_k not in merged:
+            merged[def_k] = normalize_record(def_k, def_v)
+
+    # Normalize & persist auto-expiry updates if any 1-month plan expired
+    changed = False
+    for nk, rec in list(merged.items()):
+        norm_rec = normalize_record(nk, rec)
+        if norm_rec != rec:
+            merged[nk] = norm_rec
+            changed = True
+
+    if not os.path.exists(CLIENTS_FILE) or changed:
+        save_clients(merged)
+    else:
+        sync_to_secrets_buffer(merged)
+
+    return merged
 
 clients_db = load_clients()
 
@@ -179,7 +312,7 @@ if submit_button:
             st.rerun()
         else:
             st.session_state["authenticated"] = False
-            st.sidebar.error("❌ Aapka plan (1 Month ₹9999 / Lifetime ₹39999) expire ho chuka hai ya account block hai!")
+            st.sidebar.error("❌ Aapka 1 Month plan expire ho chuka hai ya account block hai! Renew ke liye sampark karein.")
     else:
         st.session_state["authenticated"] = False
         st.sidebar.error("❌ Incorrect Client ID or Password!")
@@ -193,6 +326,10 @@ if st.session_state["authenticated"]:
             st.session_state["authenticated"] = False
             st.warning("⚠️ Aapka account remove kar diya gaya hai. Kripya support se sampark karein.")
             st.rerun()
+        if not db_fresh[curr_id].get("active", True):
+            st.session_state["authenticated"] = False
+            st.warning("⚠️ Aapka 1 Month plan expire ho chuka hai. Kripya renewal ke liye sampark karein.")
+            st.rerun()
         saved_session = db_fresh[curr_id].get("active_session")
         if saved_session and saved_session != st.session_state["my_session_id"]:
             st.session_state["authenticated"] = False
@@ -204,7 +341,7 @@ if st.session_state["authenticated"]:
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
 
         with st.sidebar.expander("🛠️ Admin Client Manager"):
-            st.markdown("**Add New Client**")
+            st.markdown("**Add / Renew Client**")
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
             new_name = st.text_input("Client Name", key="new_client_name")
             new_pass = st.text_input("Assign Password", key="new_client_pass")
@@ -216,15 +353,19 @@ if st.session_state["authenticated"]:
                 clean_pass = str(new_pass or "").strip()
                 if norm_phone and clean_name and clean_pass:
                     db_curr = load_clients()
+                    created_ts = iso_now()
+                    expiry_ts = compute_expiry_for_plan(new_plan, created_ts)
                     db_curr[norm_phone] = {
                         "name": clean_name,
                         "password": clean_pass,
                         "plan": new_plan,
+                        "created_at": created_ts,
+                        "expires_at": expiry_ts,
                         "active": True,
                         "admin": False,
                         "active_session": None,
                     }
-                    save_clients(db_curr)
+                    db_curr = save_clients(db_curr)
                     clients_db = db_curr
                     st.success(f"✅ Client {clean_name} ({norm_phone}) [{new_plan}] added successfully!")
                     st.rerun()
@@ -240,7 +381,7 @@ if st.session_state["authenticated"]:
                 if st.button("Delete Selected Client"):
                     if client_to_remove in db_curr and client_to_remove != "admin":
                         del db_curr[client_to_remove]
-                        save_clients(db_curr)
+                        db_curr = save_clients(db_curr)
                         clients_db = db_curr
                         st.success(f"✅ Client {client_to_remove} removed successfully!")
                         st.rerun()
@@ -295,7 +436,7 @@ if not st.session_state["authenticated"]:
         **Steps to unlock access:**
         1. Scan QR & pay **₹{amount}** for **{plan_label}** plan.
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
-        3. Note: Each ID supports **single-device active session** only.
+        3. Note: Each ID supports **single-device active session** only. 1 Month plan auto-expires after 30 days; Lifetime plan stays active until manually deleted.
         """)
 
         with st.expander("⚡ Instant Pass Verification (Auto-Claim)", expanded=True):
@@ -307,15 +448,20 @@ if not st.session_state["authenticated"]:
                 if len(norm_claim_phone) >= 10 and len(clean_utr) >= 6:
                     generated_pass = f"SMC{clean_utr[-4:]}"
                     db_curr = load_clients()
+                    full_plan_name = f"{plan_label} Plan (₹{amount})"
+                    created_ts = iso_now()
+                    expiry_ts = compute_expiry_for_plan(full_plan_name, created_ts)
                     db_curr[norm_claim_phone] = {
                         "name": f"User {norm_claim_phone[-4:]}",
                         "password": generated_pass,
-                        "plan": f"{plan_label} (₹{amount})",
+                        "plan": full_plan_name,
+                        "created_at": created_ts,
+                        "expires_at": expiry_ts,
                         "active": True,
                         "admin": False,
                         "active_session": None,
                     }
-                    save_clients(db_curr)
+                    db_curr = save_clients(db_curr)
                     clients_db = db_curr
                     st.success(
                         f"🎉 Verification Success ({plan_label} - ₹{amount})! Your Credentials:\n"
