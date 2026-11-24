@@ -1130,7 +1130,7 @@ def render_terminal_body(cycle_count=0):
         if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
             st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-    # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + PDH/PDL + QUICK CANDLE WINDOW) ---
+    # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + SWEEP + PDH/PDL) ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
 
     w_cols = st.columns([1, 1, 1, 2])
@@ -1310,6 +1310,27 @@ def render_terminal_body(cycle_count=0):
                 marker=dict(symbol='diamond', size=9, color='#fb7185')
             ))
 
+        # Plot Liquidity Sweep markers (BSL / SSL)
+        bsl_df = chart_df[chart_df['BSL_Sweep']].tail(3)
+        if not bsl_df.empty:
+            fig.add_trace(go.Scatter(
+                x=bsl_df.index, y=bsl_df['High'] * 1.003,
+                mode='markers+text', name='BSL Sweep',
+                text=['BSL↑'] * len(bsl_df), textposition='top center',
+                textfont=dict(color='#f472b6', size=9),
+                marker=dict(symbol='x', size=8, color='#f472b6')
+            ))
+
+        ssl_df = chart_df[chart_df['SSL_Sweep']].tail(3)
+        if not ssl_df.empty:
+            fig.add_trace(go.Scatter(
+                x=ssl_df.index, y=ssl_df['Low'] * 0.997,
+                mode='markers+text', name='SSL Sweep',
+                text=['SSL↓'] * len(ssl_df), textposition='bottom center',
+                textfont=dict(color='#34d399', size=9),
+                marker=dict(symbol='x', size=8, color='#34d399')
+            ))
+
         if latest_setup != "NEUTRAL / NO SETUP":
             fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
             fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
@@ -1332,9 +1353,30 @@ def render_terminal_body(cycle_count=0):
         log_df = pd.DataFrame(st.session_state["session_setup_log"])
         st.dataframe(log_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
 
+        log_c1, log_c2 = st.columns([1, 1])
+        with log_c1:
+            st.download_button(
+                label="⬇️ Download Setup Log (CSV)",
+                data=log_df.to_csv(index=False).encode("utf-8"),
+                file_name=f"smc_setup_log_{datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv",
+                key="download_setup_log_csv"
+            )
+        with log_c2:
+            if st.button("🗑️ Clear Session Log", key="clear_setup_log_btn"):
+                st.session_state["session_setup_log"] = []
+                st.session_state["logged_setup_keys"] = []
+                st.rerun()
+
     # --- 🌐 ALL-MARKET LIVE SMC SCANNER ---
     st.markdown("---")
     st.subheader(f"🌐 All-Market Live SMC Scanner ({timeframe})")
+    scanner_filter = st.radio(
+        "Scanner Filter:",
+        ["All", "Active Setups Only", "Bullish Only", "Bearish Only"],
+        horizontal=True,
+        key="scanner_setup_filter"
+    )
     watchlist_items = [
         ("Nifty 50", "^NSEI"),
         ("Bank Nifty", "^NSEBANK"),
@@ -1352,16 +1394,25 @@ def render_terminal_body(cycle_count=0):
     for sym_label, sym_code in watchlist_items:
         s_df = compute_smc_df(sym_code, timeframe, period_map[timeframe])
         if not s_df.empty:
+            s_setup = str(s_df["Setup"].iloc[-1])
+            if scanner_filter == "Active Setups Only" and s_setup not in ["BULLISH SETUP", "BEARISH SETUP"]:
+                continue
+            if scanner_filter == "Bullish Only" and s_setup != "BULLISH SETUP":
+                continue
+            if scanner_filter == "Bearish Only" and s_setup != "BEARISH SETUP":
+                continue
             scan_rows.append({
                 "Asset": sym_label,
                 "Price": round(float(s_df["Close"].iloc[-1]), 2),
                 "Order Flow": str(s_df["Order_Flow"].iloc[-1]),
                 "RSI": round(float(s_df["RSI"].iloc[-1]), 1),
-                "Setup": str(s_df["Setup"].iloc[-1]),
+                "Setup": s_setup,
             })
     if scan_rows:
         scan_df = pd.DataFrame(scan_rows)
         st.dataframe(scan_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
+    else:
+        st.info("Selected filter ke mutabik abhi koi matching symbol nahi mila.")
 
     st.subheader("Live Market SMC Analytics Table")
 
