@@ -396,6 +396,7 @@ defaults = {
     "last_alert_sent": "",
     "my_session_id": persisted_sid if persisted_sid else str(uuid.uuid4()),
     "admin_status_msg": "",
+    "candle_window": 120,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -753,11 +754,10 @@ with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=False):
 if st.session_state.get('broker_connected', False):
     st.sidebar.info(f"🟢 Active Broker: {st.session_state.get('active_broker', 'None')}")
 
-# Unlocked Content Area
-count = st_autorefresh(interval=5000, limit=1000, key="fno_auto_refresh")
-
-st.title("⚡ Institutional SMC Analytics Terminal Pro")
-st.caption(f"Live Refresh Rate: 5s | Auto-Refresh Counter: {count}")
+# Refresh & Chart Zoom Controls
+refresh_mode = st.sidebar.selectbox("⏱️ Auto-Refresh Rate", ["15s (Smooth Zoom)", "5s (Fast Live)", "30s", "Off (Manual)"], index=0)
+interval_map = {"5s (Fast Live)": 5000, "15s (Smooth Zoom)": 15000, "30s": 30000, "Off (Manual)": 0}
+refresh_ms = interval_map.get(refresh_mode, 15000)
 
 # Asset Details Dictionary
 ASSET_METADATA = {
@@ -825,6 +825,10 @@ def compute_smc_df(sym, tf, prd):
     df["BOS_Bullish"] = df["Close"] > prev_sh
     df["BOS_Bearish"] = df["Close"] < prev_sl
 
+    # CHoCH (Change of Character: swing break opposing prior order flow)
+    df["CHoCH_Bullish"] = df["BOS_Bullish"] & (df["Order_Flow"].shift(1) == "BEARISH")
+    df["CHoCH_Bearish"] = df["BOS_Bearish"] & (df["Order_Flow"].shift(1) == "BULLISH")
+
     # Liquidity Sweep (wick beyond prior swing high/low with close back inside)
     df["BSL_Sweep"] = (df["High"] > prev_sh) & (df["Close"] < prev_sh)
     df["SSL_Sweep"] = (df["Low"] < prev_sl) & (df["Close"] > prev_sl)
@@ -889,15 +893,22 @@ strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)
 
 tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
-data = compute_smc_df(ticker, timeframe, period_map[timeframe])
+def render_terminal_body(cycle_count=0):
+    st.title("⚡ Institutional SMC Analytics Terminal Pro")
+    st.caption(f"Refresh Mode: {refresh_mode} | Cycle Counter: {cycle_count}")
 
-if not data.empty:
+    data = compute_smc_df(ticker, timeframe, period_map[timeframe])
+
+    if data.empty:
+        st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
+        return
+
     latest_setup = data['Setup'].iloc[-1]
-    latest_price = data['Close'].iloc[-1]
-    latest_atr = data['ATR'].iloc[-1]
-    latest_rsi = data['RSI'].iloc[-1]
-    latest_of = data['Order_Flow'].iloc[-1]
-    is_consolidating = data['Consolidation'].iloc[-1]
+    latest_price = float(data['Close'].iloc[-1])
+    latest_atr = float(data['ATR'].iloc[-1]) if pd.notna(data['ATR'].iloc[-1]) else 0.0
+    latest_rsi = float(data['RSI'].iloc[-1]) if pd.notna(data['RSI'].iloc[-1]) else 50.0
+    latest_of = str(data['Order_Flow'].iloc[-1])
+    is_consolidating = bool(data['Consolidation'].iloc[-1])
     bsl_swept = bool(data['BSL_Sweep'].iloc[-1])
     ssl_swept = bool(data['SSL_Sweep'].iloc[-1])
     killzone_txt = get_ist_killzone_label()
@@ -910,15 +921,28 @@ if not data.empty:
             send_telegram_alert(st.session_state["tg_token"], st.session_state["tg_chat"], msg)
             st.session_state["last_alert_sent"] = alert_key
 
+    trail_status = "⚪ Inactive"
     if latest_setup == "BULLISH SETUP":
         sl = latest_price - (1.5 * latest_atr)
         target = latest_price + (3.0 * latest_atr)
+        one_to_one = latest_price + (1.5 * latest_atr)
+        if latest_price >= one_to_one:
+            sl = latest_price
+            trail_status = "🛡️ Breakeven / Trail SL Active"
+        else:
+            trail_status = "🎯 Working Toward 1:1 Trail"
         risk_amount = (capital * risk_per_trade) / 100
         stop_loss_points = abs(latest_price - sl)
         position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
     elif latest_setup == "BEARISH SETUP":
         sl = latest_price + (1.5 * latest_atr)
         target = latest_price - (3.0 * latest_atr)
+        one_to_one = latest_price - (1.5 * latest_atr)
+        if latest_price <= one_to_one:
+            sl = latest_price
+            trail_status = "🛡️ Breakeven / Trail SL Active"
+        else:
+            trail_status = "🎯 Working Toward 1:1 Trail"
         risk_amount = (capital * risk_per_trade) / 100
         stop_loss_points = abs(latest_price - sl)
         position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
@@ -963,9 +987,9 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # Liquidity Sweep & Session Bar
+    # Liquidity Sweep, Session & Trail SL Bar
     sweep_label = "🔴 BSL Swept (High Hunt)" if bsl_swept else ("🟢 SSL Swept (Low Hunt)" if ssl_swept else "⚪ No Active Sweep")
-    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}")
+    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **Trail SL:** {trail_status}")
 
     # --- 📊 REAL MULTI-TIMEFRAME CONFLUENCE MATRIX ---
     st.markdown("---")
@@ -1054,8 +1078,23 @@ if not data.empty:
         if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
             st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-    # --- LIVE CHART ENGINE (WITH VISUAL FVG, OB & BOS OVERLAYS) ---
+    # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + QUICK CANDLE WINDOW) ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
+
+    w_cols = st.columns([1, 1, 1, 2])
+    with w_cols[0]:
+        if st.button("50 Candles", key="win_50_btn"):
+            st.session_state["candle_window"] = 50
+    with w_cols[1]:
+        if st.button("120 Candles", key="win_120_btn"):
+            st.session_state["candle_window"] = 120
+    with w_cols[2]:
+        if st.button("200 Candles", key="win_200_btn"):
+            st.session_state["candle_window"] = 200
+    with w_cols[3]:
+        st.caption(f"Active Window: **Last {st.session_state['candle_window']} Candles**")
+
+    win_n = int(st.session_state.get("candle_window", 120))
 
     if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
         st.success("⚡ **BSE Real-Time Data Active:** Streaming live 0-sec tick feeds via TradingView Engine.")
@@ -1083,24 +1122,31 @@ if not data.empty:
         """
         components.html(tv_html, height=520)
     else:
-        chart_df = data.tail(120).copy()
+        chart_df = data.tail(win_n).copy()
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
-            x=chart_df.index, open=chart_df['Open'], high=chart_df['High'], low=chart_df['Low'], close=chart_df['Close'], name="Price"
+            x=chart_df.index,
+            open=chart_df['Open'],
+            high=chart_df['High'],
+            low=chart_df['Low'],
+            close=chart_df['Close'],
+            name="Price",
+            increasing_line_color="#2ecc71",
+            decreasing_line_color="#e74c3c"
         ))
         fig.add_trace(go.Scatter(
-            x=chart_df.index, y=chart_df['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
+            x=chart_df.index, y=chart_df['EMA20'], mode='lines', name='20 EMA', line=dict(color='#00d4ff', width=1.2)
         ))
         fig.add_trace(go.Scatter(
-            x=chart_df.index, y=chart_df['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
+            x=chart_df.index, y=chart_df['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='#f39c12', width=2)
         ))
 
         end_x = chart_df.index[-1]
 
-        # Plot recent Bullish/Bearish FVG boxes
+        # Plot recent Bullish/Bearish FVG boxes with labels
         fvg_boxes = 0
         for idx in range(len(chart_df) - 1, max(-1, len(chart_df) - 35), -1):
-            if fvg_boxes >= 4:
+            if fvg_boxes >= 3:
                 break
             ts = chart_df.index[idx]
             if bool(chart_df['Bullish_FVG'].iloc[idx]) and idx >= 2:
@@ -1112,6 +1158,10 @@ if not data.empty:
                         fillcolor="rgba(46, 204, 113, 0.16)",
                         line=dict(color="rgba(46, 204, 113, 0.55)", width=1, dash="dot")
                     )
+                    fig.add_annotation(
+                        x=end_x, y=y1, text="Bull FVG", showarrow=False,
+                        xanchor="right", yanchor="bottom", font=dict(size=9, color="#2ecc71")
+                    )
                     fvg_boxes += 1
             elif bool(chart_df['Bearish_FVG'].iloc[idx]) and idx >= 2:
                 y0 = float(chart_df['High'].iloc[idx])
@@ -1122,12 +1172,16 @@ if not data.empty:
                         fillcolor="rgba(231, 76, 60, 0.16)",
                         line=dict(color="rgba(231, 76, 60, 0.55)", width=1, dash="dot")
                     )
+                    fig.add_annotation(
+                        x=end_x, y=y1, text="Bear FVG", showarrow=False,
+                        xanchor="right", yanchor="bottom", font=dict(size=9, color="#e74c3c")
+                    )
                     fvg_boxes += 1
 
-        # Plot recent Order Block zones
+        # Plot recent Order Block zones with labels
         ob_boxes = 0
         for idx in range(len(chart_df) - 1, max(0, len(chart_df) - 35), -1):
-            if ob_boxes >= 3:
+            if ob_boxes >= 2:
                 break
             prev_ts = chart_df.index[idx - 1]
             if bool(chart_df['Bullish_OB'].iloc[idx]):
@@ -1138,6 +1192,10 @@ if not data.empty:
                     fillcolor="rgba(0, 212, 255, 0.14)",
                     line=dict(color="rgba(0, 212, 255, 0.65)", width=1)
                 )
+                fig.add_annotation(
+                    x=prev_ts, y=y1, text="Bull OB", showarrow=False,
+                    xanchor="left", yanchor="bottom", font=dict(size=9, color="#00d4ff")
+                )
                 ob_boxes += 1
             elif bool(chart_df['Bearish_OB'].iloc[idx]):
                 y0 = float(min(chart_df['Open'].iloc[idx - 1], chart_df['Close'].iloc[idx - 1]))
@@ -1147,10 +1205,14 @@ if not data.empty:
                     fillcolor="rgba(241, 196, 15, 0.14)",
                     line=dict(color="rgba(241, 196, 15, 0.65)", width=1)
                 )
+                fig.add_annotation(
+                    x=prev_ts, y=y1, text="Bear OB", showarrow=False,
+                    xanchor="left", yanchor="bottom", font=dict(size=9, color="#f1c40f")
+                )
                 ob_boxes += 1
 
-        # Plot BOS markers on chart
-        bos_b_df = chart_df[chart_df['BOS_Bullish']].tail(5)
+        # Plot BOS & CHoCH markers on chart
+        bos_b_df = chart_df[chart_df['BOS_Bullish'] & (~chart_df['CHoCH_Bullish'])].tail(4)
         if not bos_b_df.empty:
             fig.add_trace(go.Scatter(
                 x=bos_b_df.index, y=bos_b_df['High'] * 1.001,
@@ -1160,7 +1222,7 @@ if not data.empty:
                 marker=dict(symbol='triangle-up', size=9, color='#2ecc71')
             ))
 
-        bos_s_df = chart_df[chart_df['BOS_Bearish']].tail(5)
+        bos_s_df = chart_df[chart_df['BOS_Bearish'] & (~chart_df['CHoCH_Bearish'])].tail(4)
         if not bos_s_df.empty:
             fig.add_trace(go.Scatter(
                 x=bos_s_df.index, y=bos_s_df['Low'] * 0.999,
@@ -1170,17 +1232,40 @@ if not data.empty:
                 marker=dict(symbol='triangle-down', size=9, color='#e74c3c')
             ))
 
+        choch_b_df = chart_df[chart_df['CHoCH_Bullish']].tail(3)
+        if not choch_b_df.empty:
+            fig.add_trace(go.Scatter(
+                x=choch_b_df.index, y=choch_b_df['High'] * 1.002,
+                mode='markers+text', name='CHoCH Bullish',
+                text=['CHoCH↑'] * len(choch_b_df), textposition='top center',
+                textfont=dict(color='#a3e635', size=10),
+                marker=dict(symbol='diamond', size=9, color='#a3e635')
+            ))
+
+        choch_s_df = chart_df[chart_df['CHoCH_Bearish']].tail(3)
+        if not choch_s_df.empty:
+            fig.add_trace(go.Scatter(
+                x=choch_s_df.index, y=choch_s_df['Low'] * 0.998,
+                mode='markers+text', name='CHoCH Bearish',
+                text=['CHoCH↓'] * len(choch_s_df), textposition='bottom center',
+                textfont=dict(color='#fb7185', size=10),
+                marker=dict(symbol='diamond', size=9, color='#fb7185')
+            ))
+
         if latest_setup != "NEUTRAL / NO SETUP":
             fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
             fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
 
         fig.update_layout(
+            uirevision=f"{ticker}_{timeframe}_{win_n}_zoom_lock",
             xaxis_rangeslider_visible=False,
             template="plotly_dark",
-            height=480,
-            margin=dict(l=10, r=10, t=30, b=10)
+            height=500,
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
+            margin=dict(l=10, r=10, t=35, b=10)
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key=f"smc_main_chart_{ticker}_{timeframe}_{win_n}")
 
     # --- 🌐 ALL-MARKET LIVE SMC SCANNER ---
     st.markdown("---")
@@ -1216,7 +1301,7 @@ if not data.empty:
     st.subheader("Live Market SMC Analytics Table")
 
     # Clean DataFrame & Round Decimals to Prevent Mobile Overlap/Glitch
-    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12).copy()
+    table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'CHoCH_Bullish', 'CHoCH_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12).copy()
     for col in ['Open', 'High', 'Low', 'Close']:
         if col in table_df.columns:
             table_df[col] = table_df[col].round(2)
@@ -1227,5 +1312,24 @@ if not data.empty:
     st.markdown("---")
     st.caption("⚠️ **Disclaimer:** All indicators, market setups, and calculators provided in this terminal are strictly for learning, technical analysis practice, and quantitative research purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
 
+# Use @st.fragment when supported by Streamlit version so chart zoom/pan doesn't reload the full page
+if hasattr(st, "fragment"):
+    if refresh_ms > 0:
+        @st.fragment(run_every=max(5, refresh_ms // 1000))
+        def live_terminal_fragment():
+            st.session_state["frag_cycle"] = int(st.session_state.get("frag_cycle", 0)) + 1
+            render_terminal_body(st.session_state["frag_cycle"])
+
+        live_terminal_fragment()
+    else:
+        @st.fragment
+        def static_terminal_fragment():
+            render_terminal_body(0)
+
+        static_terminal_fragment()
 else:
-    st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
+    if refresh_ms > 0:
+        count = st_autorefresh(interval=refresh_ms, limit=5000, key="fno_auto_refresh")
+    else:
+        count = 0
+    render_terminal_body(count)
