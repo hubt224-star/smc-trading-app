@@ -397,6 +397,8 @@ defaults = {
     "my_session_id": persisted_sid if persisted_sid else str(uuid.uuid4()),
     "admin_status_msg": "",
     "candle_window": 120,
+    "session_setup_log": [],
+    "logged_setup_keys": [],
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -850,6 +852,22 @@ def compute_smc_df(sym, tf, prd):
     df.loc[sell_cond, "Setup"] = "BEARISH SETUP"
     return df
 
+@st.cache_data(ttl=120, show_spinner=False)
+def get_pdh_pdl(sym):
+    try:
+        d_df = yf.download(sym, period="5d", interval="1d", progress=False, auto_adjust=False)
+        if d_df is None or d_df.empty or len(d_df) < 2:
+            return None, None
+        if isinstance(d_df.columns, pd.MultiIndex):
+            d_df.columns = d_df.columns.get_level_values(0)
+        d_df = d_df.dropna(subset=["High", "Low"])
+        if len(d_df) < 2:
+            return None, None
+        prev_day = d_df.iloc[-2]
+        return float(prev_day["High"]), float(prev_day["Low"])
+    except Exception:
+        return None, None
+
 @st.cache_data(ttl=60, show_spinner=False)
 def get_mtf_bias(sym):
     out = {"5m": "NEUTRAL", "15m": "NEUTRAL", "1h": "NEUTRAL"}
@@ -912,6 +930,7 @@ def render_terminal_body(cycle_count=0):
     bsl_swept = bool(data['BSL_Sweep'].iloc[-1])
     ssl_swept = bool(data['SSL_Sweep'].iloc[-1])
     killzone_txt = get_ist_killzone_label()
+    pdh_val, pdl_val = get_pdh_pdl(ticker)
 
     # Automatic Telegram Notification Dispatcher
     if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
@@ -948,6 +967,24 @@ def render_terminal_body(cycle_count=0):
         position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
     else:
         sl, target, position_size = 0.0, 0.0, 0
+
+    # Record active setup in session history log (once per bar + setup)
+    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"]:
+        setup_sig_key = f"{ticker}_{timeframe}_{latest_setup}_{str(data.index[-1])}"
+        if setup_sig_key not in st.session_state["logged_setup_keys"]:
+            ist_time_str = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%H:%M:%S")
+            st.session_state["logged_setup_keys"].append(setup_sig_key)
+            st.session_state["session_setup_log"].insert(0, {
+                "Time (IST)": ist_time_str,
+                "Asset": selected_asset,
+                "TF": timeframe,
+                "Setup": latest_setup,
+                "Entry": round(latest_price, 2),
+                "SL": round(sl, 2),
+                "Target": round(target, 2),
+                "Trail": trail_status,
+            })
+            st.session_state["session_setup_log"] = st.session_state["session_setup_log"][:50]
 
     # Top Metric Bar
     row1_1, row1_2, row1_3, row1_4 = st.columns(4)
@@ -987,9 +1024,10 @@ def render_terminal_body(cycle_count=0):
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # Liquidity Sweep, Session & Trail SL Bar
+    # Liquidity Sweep, Session, Trail SL & PDH/PDL Bar
+    pdh_pdl_txt = f"PDH: {pdh_val:.2f} | PDL: {pdl_val:.2f}" if (pdh_val is not None and pdl_val is not None) else "PDH/PDL: N/A"
     sweep_label = "🔴 BSL Swept (High Hunt)" if bsl_swept else ("🟢 SSL Swept (Low Hunt)" if ssl_swept else "⚪ No Active Sweep")
-    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **Trail SL:** {trail_status}")
+    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **Trail SL:** {trail_status}  |  **{pdh_pdl_txt}**")
 
     # --- 📊 REAL MULTI-TIMEFRAME CONFLUENCE MATRIX ---
     st.markdown("---")
@@ -1072,13 +1110,27 @@ def render_terminal_body(cycle_count=0):
     row2_2.metric("Est. Spot Target", f"{target:.2f}" if target > 0 else "N/A")
     row2_3.metric("Max Quantity Model", f"{position_size} Qty ({total_lots} Lots)" if position_size > 0 else "N/A")
 
+    # Copy-Ready Signal Summary Card for Students / Telegram
+    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"]:
+        summary_text = (
+            f"⚡ SMC Educational Setup — {selected_asset} ({timeframe})\n"
+            f"• Setup: {latest_setup} | Order Flow: {latest_of}\n"
+            f"• Strike View: {mapped_strike} {contract_type} ({strike_type.split()[0]})\n"
+            f"• Spot Reference: {latest_price:.2f}\n"
+            f"• Spot SL: {sl:.2f} | Target (1:2): {target:.2f}\n"
+            f"• Trail Status: {trail_status}\n"
+            f"(Educational study note only)"
+        )
+        with st.expander("📋 Copy-Ready Signal Summary Note", expanded=False):
+            st.code(summary_text, language="text")
+
     if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
         active_b = st.session_state.get('active_broker', 'Broker')
         st.markdown(f"### ⚡ Broker Integration Sandbox ({active_b})")
         if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
             st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-    # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + QUICK CANDLE WINDOW) ---
+    # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + PDH/PDL + QUICK CANDLE WINDOW) ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
 
     w_cols = st.columns([1, 1, 1, 2])
@@ -1142,6 +1194,12 @@ def render_terminal_body(cycle_count=0):
         ))
 
         end_x = chart_df.index[-1]
+
+        # Plot Previous Day High (PDH) and Low (PDL) liquidity levels
+        if pdh_val is not None:
+            fig.add_hline(y=pdh_val, line_dash="dot", line_color="#38bdf8", annotation_text=f"PDH ({pdh_val:.2f})", annotation_position="top left")
+        if pdl_val is not None:
+            fig.add_hline(y=pdl_val, line_dash="dot", line_color="#c084fc", annotation_text=f"PDL ({pdl_val:.2f})", annotation_position="bottom left")
 
         # Plot recent Bullish/Bearish FVG boxes with labels
         fvg_boxes = 0
@@ -1266,6 +1324,13 @@ def render_terminal_body(cycle_count=0):
             margin=dict(l=10, r=10, t=35, b=10)
         )
         st.plotly_chart(fig, use_container_width=True, key=f"smc_main_chart_{ticker}_{timeframe}_{win_n}")
+
+    # --- 📜 SESSION SETUP HISTORY LOG ---
+    if st.session_state.get("session_setup_log"):
+        st.markdown("---")
+        st.subheader("📜 Session Setup History Log")
+        log_df = pd.DataFrame(st.session_state["session_setup_log"])
+        st.dataframe(log_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
 
     # --- 🌐 ALL-MARKET LIVE SMC SCANNER ---
     st.markdown("---")
