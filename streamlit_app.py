@@ -1,16 +1,17 @@
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import ta
-import plotly.graph_objects as go
-from streamlit_autorefresh import st_autorefresh
-import streamlit.components.v1 as components
 import json
 import os
-import requests
-import uuid
 import urllib.parse
+import uuid
 from datetime import datetime, timedelta, timezone
+
+import pandas as pd
+import plotly.graph_objects as go
+import requests
+import streamlit as st
+import streamlit.components.v1 as components
+import ta
+import yfinance as yf
+from streamlit_autorefresh import st_autorefresh
 
 # Page setup
 st.set_page_config(page_title="Master Institutional SMC Terminal Pro", layout="wide")
@@ -59,9 +60,11 @@ def color_table_setup(val):
         return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
     return ''
 
-# --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM LOCK + CLEAN DELETE) ---
+# --- UNIQUE CLIENT LOGIN DATABASE SETUP (3-DAY TRIAL + 1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM + FORCE LOGOUT) ---
 CLIENTS_FILE = "clients.json"
 CLAIMS_HISTORY_FILE = "claimed_keys_history.json"
+TRIAL_DAYS = 3
+TRIAL_FEE_INR = "499"
 ONE_MONTH_DAYS = 30
 
 def now_utc():
@@ -74,38 +77,63 @@ def is_lifetime_plan(plan_text):
     p = str(plan_text or "").lower()
     return "lifetime" in p or "life" in p
 
-def compute_expiry_for_plan(plan_text, from_iso=None):
+def is_trial_plan(plan_text):
+    p = str(plan_text or "").lower()
+    return "trial" in p or "3 day" in p or "3-day" in p
+
+def get_plan_duration_days(plan_text):
     if is_lifetime_plan(plan_text):
         return None
-    base_dt = now_utc()
-    if from_iso:
-        try:
-            base_dt = datetime.fromisoformat(str(from_iso))
-            if base_dt.tzinfo is None:
-                base_dt = base_dt.replace(tzinfo=timezone.utc)
-        except Exception:
-            base_dt = now_utc()
-    return (base_dt + timedelta(days=ONE_MONTH_DAYS)).isoformat()
+    if is_trial_plan(plan_text):
+        return TRIAL_DAYS
+    return ONE_MONTH_DAYS
+
+def parse_iso_utc(dt_str):
+    if not dt_str:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(dt_str))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return None
+
+def is_record_expired(rec):
+    if not isinstance(rec, dict) or bool(rec.get("admin", False)):
+        return False
+    if is_lifetime_plan(rec.get("plan", "")):
+        return False
+    exp_dt = parse_iso_utc(rec.get("expires_at"))
+    if exp_dt is None:
+        return False
+    return now_utc() >= exp_dt
+
+def compute_expiry_for_plan(plan_text, from_iso=None):
+    days = get_plan_duration_days(plan_text)
+    if days is None:
+        return None
+    base_dt = parse_iso_utc(from_iso) or now_utc()
+    return (base_dt + timedelta(days=days)).isoformat()
 
 def format_expiry_badge(rec):
     plan = rec.get("plan", "")
     if is_lifetime_plan(plan):
         return "♾️ Lifetime (Active)"
-    exp_str = rec.get("expires_at")
-    if not exp_str:
-        return "⏳ 30 Days"
-    try:
-        exp_dt = datetime.fromisoformat(str(exp_str))
-        if exp_dt.tzinfo is None:
-            exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-        rem = exp_dt - now_utc()
-        if rem.total_seconds() <= 0:
-            return "❌ Expired"
-        days_left = rem.days
-        date_txt = exp_dt.strftime("%d %b %Y")
-        return f"📅 {days_left}d left ({date_txt})"
-    except Exception:
-        return "⏳ 30 Days"
+    exp_dt = parse_iso_utc(rec.get("expires_at"))
+    if not exp_dt:
+        return f"⏳ {get_plan_duration_days(plan) or 30}d Plan"
+    rem = exp_dt - now_utc()
+    total_secs = int(rem.total_seconds())
+    if total_secs <= 0:
+        return "❌ Expired"
+    if is_trial_plan(plan):
+        hours_left = total_secs // 3600
+        mins_left = (total_secs % 3600) // 60
+        return f"🧪 Trial: {hours_left}h {mins_left}m left"
+    days_left = rem.days
+    date_txt = exp_dt.strftime("%d %b %Y")
+    return f"📅 {days_left}d left ({date_txt})"
 
 def normalize_client_id(raw_id):
     cleaned = "".join(str(raw_id or "").split()).strip()
@@ -197,22 +225,15 @@ def normalize_record(cid, rec):
     created_at = rec.get("created_at") or iso_now()
     expires_at = rec.get("expires_at")
 
-    if not is_lifetime_plan(plan) and not expires_at:
-        expires_at = compute_expiry_for_plan(plan, created_at)
-    elif is_lifetime_plan(plan):
+    if is_lifetime_plan(plan):
         expires_at = None
+    elif not expires_at:
+        expires_at = compute_expiry_for_plan(plan, created_at)
 
     active = bool(rec.get("active", True))
-
-    if not is_lifetime_plan(plan) and expires_at:
-        try:
-            exp_dt = datetime.fromisoformat(str(expires_at))
-            if exp_dt.tzinfo is None:
-                exp_dt = exp_dt.replace(tzinfo=timezone.utc)
-            if now_utc() >= exp_dt:
-                active = False
-        except Exception:
-            pass
+    if is_record_expired({**rec, "plan": plan, "expires_at": expires_at, "admin": False}):
+        active = False
+        rec["active_session"] = None
 
     rec["name"] = rec.get("name", cid)
     rec["password"] = str(rec.get("password", "")).strip()
@@ -318,16 +339,9 @@ def load_clients():
         if nk not in merged:
             merged[nk] = rec
         else:
-            try:
-                t_old = datetime.fromisoformat(str(merged[nk].get("created_at", "1970-01-01T00:00:00+00:00")))
-                t_new = datetime.fromisoformat(str(rec.get("created_at", "1970-01-01T00:00:00+00:00")))
-                if t_old.tzinfo is None:
-                    t_old = t_old.replace(tzinfo=timezone.utc)
-                if t_new.tzinfo is None:
-                    t_new = t_new.replace(tzinfo=timezone.utc)
-                if t_new >= t_old:
-                    merged[nk] = rec
-            except Exception:
+            t_old = parse_iso_utc(merged[nk].get("created_at")) or datetime(1970, 1, 1, tzinfo=timezone.utc)
+            t_new = parse_iso_utc(rec.get("created_at")) or datetime(1970, 1, 1, tzinfo=timezone.utc)
+            if t_new >= t_old:
                 merged[nk] = rec
 
     try:
@@ -360,6 +374,59 @@ def load_clients():
         sync_to_runtime_cache(merged, deleted_set)
 
     return merged
+
+def force_logout_user(notice_msg):
+    """Session state clear karke aur URL sid hata kar user ko login/locked view par bhejta hai."""
+    preserve_keys = {
+        "runtime_clients_cache",
+        "runtime_deleted_ids",
+        "runtime_claims_history",
+        "candle_window",
+        "session_setup_log",
+        "logged_setup_keys",
+        "sound_alerts_enabled",
+    }
+    for key in list(st.session_state.keys()):
+        if key not in preserve_keys:
+            del st.session_state[key]
+    st.session_state["authenticated"] = False
+    st.session_state["admin_mode"] = False
+    st.session_state["logout_notice"] = notice_msg
+    if "sid" in st.query_params:
+        del st.query_params["sid"]
+    st.rerun()
+
+def enforce_session_and_expiry():
+    """Login ke baad aur har refresh/fragment cycle mein expiry + single-device session check karta hai."""
+    if not st.session_state.get("authenticated"):
+        return
+
+    curr_id = st.session_state.get("current_user_id")
+    if not curr_id or curr_id == "admin":
+        return
+
+    db_fresh = load_clients()
+    if curr_id not in db_fresh:
+        force_logout_user("⚠️ Aapka account remove kar diya gaya hai. Kripya support se sampark karein.")
+
+    rec = db_fresh[curr_id]
+    if is_record_expired(rec):
+        rec["active"] = False
+        rec["active_session"] = None
+        save_clients(db_fresh)
+        if is_trial_plan(rec.get("plan", "")):
+            force_logout_user("⏳ Aapka 3-Day Learning Trial Pass samapt ho gaya hai! Auto-logged out — aage study ke liye 1-Month (₹9999) ya Lifetime (₹39999) pass lein.")
+        else:
+            force_logout_user("⚠️ Aapka plan expire ho chuka hai! Auto-logged out — renewal ke liye sampark karein.")
+
+    if not rec.get("active", True):
+        rec["active_session"] = None
+        save_clients(db_fresh)
+        force_logout_user("⚠️ Aapka pass abhi inactive/expired hai. Kripya renewal ke liye sampark karein.")
+
+    saved_session = rec.get("active_session")
+    if saved_session and saved_session != st.session_state.get("my_session_id"):
+        force_logout_user("⚠️ Aapka account kisi aur device par login hua hai. Security ke liye yeh session band kar diya gaya hai.")
 
 clients_db = load_clients()
 claims_history = load_claims_history()
@@ -396,6 +463,7 @@ defaults = {
     "last_alert_sent": "",
     "my_session_id": persisted_sid if persisted_sid else str(uuid.uuid4()),
     "admin_status_msg": "",
+    "logout_notice": "",
     "candle_window": 120,
     "session_setup_log": [],
     "logged_setup_keys": [],
@@ -406,7 +474,7 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# Auto-restore session after browser refresh if sid matches a valid active user/admin
+# Auto-restore session after browser refresh if sid matches a valid active & non-expired user/admin
 if not st.session_state["authenticated"] and persisted_sid:
     db_restore = load_clients()
     if persisted_sid == "admin_session_" + str(db_restore["admin"].get("password", "SMCALGO@1999")).strip():
@@ -417,7 +485,12 @@ if not st.session_state["authenticated"] and persisted_sid:
         st.session_state["my_session_id"] = persisted_sid
     else:
         for uid_key, u_rec in db_restore.items():
-            if uid_key != "admin" and u_rec.get("active", True) and u_rec.get("active_session") == persisted_sid:
+            if (
+                uid_key != "admin"
+                and u_rec.get("active", True)
+                and not is_record_expired(u_rec)
+                and u_rec.get("active_session") == persisted_sid
+            ):
                 st.session_state["authenticated"] = True
                 st.session_state["admin_mode"] = bool(u_rec.get("admin", False))
                 st.session_state["client_name"] = u_rec.get("name", uid_key)
@@ -443,54 +516,50 @@ if submit_button:
         st.session_state["client_name"] = db_fresh["admin"].get("name", "Mr. Yusuf (Admin)")
         st.session_state["current_user_id"] = "admin"
         st.session_state["my_session_id"] = admin_sid
+        st.session_state["logout_notice"] = ""
         st.query_params["sid"] = admin_sid
         st.rerun()
     elif cid in db_fresh and str(db_fresh[cid].get("password", "")).strip() == pwd:
-        if db_fresh[cid].get("active", True):
-            new_sid = st.session_state["my_session_id"] or str(uuid.uuid4())
-            db_fresh[cid]["active_session"] = new_sid
+        rec_login = db_fresh[cid]
+        if is_record_expired(rec_login):
+            rec_login["active"] = False
+            rec_login["active_session"] = None
+            save_clients(db_fresh)
+            st.session_state["authenticated"] = False
+            msg_exp = (
+                "❌ Aapka 3-Day Learning Trial Pass expire ho chuka hai! Aage study ke liye 1-Month (₹9999) ya Lifetime (₹39999) pass lein."
+                if is_trial_plan(rec_login.get("plan", ""))
+                else "❌ Aapka 1 Month plan expire ho chuka hai! Renew ke liye sampark karein."
+            )
+            st.session_state["logout_notice"] = msg_exp
+            st.sidebar.error(msg_exp)
+        elif rec_login.get("active", True):
+            new_sid = str(uuid.uuid4())
+            rec_login["active_session"] = new_sid
             save_clients(db_fresh)
             clients_db = db_fresh
 
             st.session_state["authenticated"] = True
-            st.session_state["admin_mode"] = db_fresh[cid].get("admin", False)
-            st.session_state["client_name"] = db_fresh[cid].get("name", cid)
+            st.session_state["admin_mode"] = rec_login.get("admin", False)
+            st.session_state["client_name"] = rec_login.get("name", cid)
             st.session_state["current_user_id"] = cid
             st.session_state["my_session_id"] = new_sid
+            st.session_state["logout_notice"] = ""
             st.query_params["sid"] = new_sid
             st.rerun()
         else:
             st.session_state["authenticated"] = False
-            st.sidebar.error("❌ Aapka 1 Month plan expire ho chuka hai ya account block hai! Renew ke liye sampark karein.")
+            st.sidebar.error("❌ Aapka plan expire ho chuka hai ya account block hai! Renew ke liye sampark karein.")
     else:
         st.session_state["authenticated"] = False
         st.sidebar.error("❌ Incorrect Client ID or Password!")
 
-# Authentication Status UI & Session Validation Check
+# Run session & expiry guard right after auth check
+enforce_session_and_expiry()
+
+# Authentication Status UI
 if st.session_state["authenticated"]:
     curr_id = st.session_state.get("current_user_id")
-    if curr_id and curr_id != "admin":
-        db_fresh = load_clients()
-        if curr_id not in db_fresh:
-            st.session_state["authenticated"] = False
-            if "sid" in st.query_params:
-                del st.query_params["sid"]
-            st.warning("⚠️ Aapka account remove kar diya gaya hai. Kripya support se sampark karein.")
-            st.rerun()
-        if not db_fresh[curr_id].get("active", True):
-            st.session_state["authenticated"] = False
-            if "sid" in st.query_params:
-                del st.query_params["sid"]
-            st.warning("⚠️ Aapka 1 Month plan expire ho chuka hai. Kripya renewal ke liye sampark karein.")
-            st.rerun()
-        saved_session = db_fresh[curr_id].get("active_session")
-        if saved_session and saved_session != st.session_state["my_session_id"]:
-            st.session_state["authenticated"] = False
-            if "sid" in st.query_params:
-                del st.query_params["sid"]
-            st.warning("⚠️ Aapka account kisi aur device par login hua hai. Security ke liye yeh session band kar diya gaya hai.")
-            st.rerun()
-
     client_display = st.session_state.get("client_name", "Authorized User")
     if st.session_state.get("admin_mode", False):
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
@@ -503,7 +572,15 @@ if st.session_state["authenticated"]:
             new_phone = st.text_input("Client Phone / ID", key="new_client_phone")
             new_name = st.text_input("Client Name", key="new_client_name")
             new_pass = st.text_input("Assign Password", key="new_client_pass")
-            new_plan = st.selectbox("Selected Plan", ["1 Month Plan (₹9999)", "Lifetime Plan (₹39999)"], key="new_client_plan")
+            new_plan = st.selectbox(
+                "Selected Plan",
+                [
+                    f"3 Days Trial (₹{TRIAL_FEE_INR})",
+                    "1 Month Plan (₹9999)",
+                    "Lifetime Plan (₹39999)",
+                ],
+                key="new_client_plan",
+            )
 
             if st.button("Add Client to DB"):
                 norm_phone = normalize_client_id(new_phone)
@@ -539,19 +616,22 @@ if st.session_state["authenticated"]:
             db_curr = load_clients()
             non_admin_items = [(k, v) for k, v in db_curr.items() if k != "admin"]
 
-            one_month_list = [(k, v) for k, v in non_admin_items if not is_lifetime_plan(v.get("plan", ""))]
+            trial_list = [(k, v) for k, v in non_admin_items if is_trial_plan(v.get("plan", ""))]
+            one_month_list = [(k, v) for k, v in non_admin_items if (not is_lifetime_plan(v.get("plan", "")) and not is_trial_plan(v.get("plan", "")))]
             lifetime_list = [(k, v) for k, v in non_admin_items if is_lifetime_plan(v.get("plan", ""))]
 
-            st.caption(f"⏳ 1 Month: **{len(one_month_list)}** | ♾️ Lifetime: **{len(lifetime_list)}**")
+            st.caption(f"🧪 3-Day Trial: **{len(trial_list)}** | ⏳ 1 Month: **{len(one_month_list)}** | ♾️ Lifetime: **{len(lifetime_list)}**")
 
             filter_choice = st.radio(
                 "Filter Clients:",
-                ["All", "1 Month (₹9999)", "Lifetime (₹39999)"],
+                ["All", "3-Day Trial", "1 Month (₹9999)", "Lifetime (₹39999)"],
                 horizontal=True,
                 key="admin_client_filter"
             )
 
-            if filter_choice == "1 Month (₹9999)":
+            if filter_choice == "3-Day Trial":
+                filtered_items = trial_list
+            elif filter_choice == "1 Month (₹9999)":
                 filtered_items = one_month_list
             elif filter_choice == "Lifetime (₹39999)":
                 filtered_items = lifetime_list
@@ -561,7 +641,13 @@ if st.session_state["authenticated"]:
             if filtered_items:
                 rows = []
                 for cid_key, info in filtered_items:
-                    p_type = "♾️ Lifetime" if is_lifetime_plan(info.get("plan", "")) else "⏳ 1 Month"
+                    p_raw = info.get("plan", "")
+                    if is_lifetime_plan(p_raw):
+                        p_type = "♾️ Lifetime"
+                    elif is_trial_plan(p_raw):
+                        p_type = "🧪 3-Day Trial"
+                    else:
+                        p_type = "⏳ 1 Month"
                     rows.append({
                         "ID": cid_key,
                         "Name": info.get("name", cid_key),
@@ -578,7 +664,13 @@ if st.session_state["authenticated"]:
             if non_admin_items:
                 client_options = {}
                 for k, v in non_admin_items:
-                    tag = "♾️ Lifetime" if is_lifetime_plan(v.get("plan", "")) else "⏳ 1 Month"
+                    p_raw = v.get("plan", "")
+                    if is_lifetime_plan(p_raw):
+                        tag = "♾️ Lifetime"
+                    elif is_trial_plan(p_raw):
+                        tag = "🧪 3-Day Trial"
+                    else:
+                        tag = "⏳ 1 Month"
                     label = f"{k} — {v.get('name', k)} [{tag}]"
                     client_options[label] = k
                 selected_label = st.selectbox("Select Client to Remove", list(client_options.keys()), key="remove_client_select")
@@ -613,27 +705,44 @@ if st.session_state["authenticated"]:
         st.sidebar.success(f"✅ Welcome, {client_display}")
         st.sidebar.caption(f"Plan: {format_expiry_badge(curr_rec)}")
         if st.sidebar.button("Logout"):
+            db_out = load_clients()
+            if curr_id in db_out and db_out[curr_id].get("active_session") == st.session_state.get("my_session_id"):
+                db_out[curr_id]["active_session"] = None
+                save_clients(db_out)
             st.session_state["authenticated"] = False
             if "sid" in st.query_params:
                 del st.query_params["sid"]
             st.rerun()
 else:
-    st.sidebar.warning("🔒 Scanner Locked (1M: ₹9999 | Life: ₹39999)")
+    st.sidebar.warning(f"🔒 Scanner Locked (Trial: ₹{TRIAL_FEE_INR} | 1M: ₹9999 | Life: ₹39999)")
 
-# Locked Screen View + Instant Passclaim Sandbox (1 Month ₹9999 / Lifetime ₹39999)
+# Locked Screen View + Instant Passclaim Sandbox (3-Day Trial / 1 Month ₹9999 / Lifetime ₹39999)
 if not st.session_state["authenticated"]:
     st.title("⚡ Institutional SMC Analytics Terminal Pro")
-    st.error("🔒 Learning Terminal Locked! 1 Month (₹9999) ya Lifetime (₹39999) educational pass lekar access paayein. *(Educational charting tool only — SEBI-registered tip/advice nahi hai.)*")
+    if st.session_state.get("logout_notice"):
+        st.warning(st.session_state["logout_notice"])
+    st.error(f"🔒 Learning Terminal Locked! 3-Day Trial (₹{TRIAL_FEE_INR} — auto-logout after 3 days), 1 Month (₹9999), ya Lifetime (₹39999) educational pass lekar access paayein. *(Educational charting tool only — SEBI-registered tip/advice nahi hai.)*")
 
-    st.markdown("### 🚀 Plans: 1 Month — ₹9999 | Lifetime — ₹39999")
+    st.markdown(f"### 🚀 Plans: 3-Day Trial — ₹{TRIAL_FEE_INR} (Auto-Logout) | 1 Month — ₹9999 | Lifetime — ₹39999")
 
     selected_plan_option = st.radio(
         "Apna Plan Select Karein:",
-        ["1 Month Plan — ₹9999", "Lifetime Plan — ₹39999"],
+        [
+            f"3 Days Trial — ₹{TRIAL_FEE_INR}",
+            "1 Month Plan — ₹9999",
+            "Lifetime Plan — ₹39999",
+        ],
         horizontal=True,
     )
-    amount = "9999" if "9999" in selected_plan_option else "39999"
-    plan_label = "1 Month" if amount == "9999" else "Lifetime"
+    if "3 Days Trial" in selected_plan_option:
+        amount = TRIAL_FEE_INR
+        plan_label = "3 Days Trial"
+    elif "9999" in selected_plan_option:
+        amount = "9999"
+        plan_label = "1 Month"
+    else:
+        amount = "39999"
+        plan_label = "Lifetime"
 
     upi_id = "9199786026@ptyes"
     payee_name = "Mdaziz Shekh"
@@ -647,12 +756,12 @@ if not st.session_state["authenticated"]:
 
     with col2:
         st.markdown(f"""
-        **Selected Plan:** **{plan_label} — ₹{amount}** *(1 Month: ₹9999 | Lifetime: ₹39999 — Educational Access)*
+        **Selected Plan:** **{plan_label} — ₹{amount}** *(3-Day Trial: ₹{TRIAL_FEE_INR} | 1 Month: ₹9999 | Lifetime: ₹39999 — Educational Access)*
 
         **Steps to unlock access:**
         1. Scan QR & pay **₹{amount}** for **{plan_label}** educational pass.
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
-        3. Note: Each ID supports **single-device active session** only. **One-time claim only** — same Phone ya UTR se dubara key generate nahi hogi.
+        3. Note: Each ID supports **single-device active session** only. **3-Day Trial** 3 din baad automatic expire aur logged out ho jaayega. **One-time claim only** — same Phone ya UTR se dubara key generate nahi hogi.
         """)
 
         with st.expander("⚡ Instant Pass Verification (Auto-Claim)", expanded=True):
@@ -673,7 +782,7 @@ if not st.session_state["authenticated"]:
                     st.error("🚫 Ye UTR Number pehle hi use ho chuka hai! Same UTR se dubara key generate nahi hogi.")
                 else:
                     generated_pass = f"SMC{clean_utr[-4:]}"
-                    full_plan_name = f"{plan_label} Plan (₹{amount})"
+                    full_plan_name = f"{plan_label} Plan (₹{amount})" if plan_label != "3 Days Trial" else f"3 Days Trial (₹{amount})"
                     created_ts = iso_now()
                     expiry_ts = compute_expiry_for_plan(full_plan_name, created_ts)
                     db_curr[norm_claim_phone] = {
@@ -700,7 +809,7 @@ if not st.session_state["authenticated"]:
                     )
 
                     wa_success_msg = urllib.parse.quote(
-                        f"Bhai maine {plan_label} educational pass ke liye ₹{amount} pay kar diya hai (1M: ₹9999 / Life: ₹39999). Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai."
+                        f"Bhai maine {plan_label} educational pass ke liye ₹{amount} pay kar diya hai (Trial: ₹{TRIAL_FEE_INR} | 1M: ₹9999 | Life: ₹39999). Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai."
                     )
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
@@ -711,7 +820,7 @@ if not st.session_state["authenticated"]:
                         ''', unsafe_allow_html=True)
 
         wa_text = urllib.parse.quote(
-            f"Bhai maine {plan_label} educational pass ke liye ₹{amount} pay kar diya hai (1 Month: ₹9999 | Lifetime: ₹39999), mera unique scanner password dedo."
+            f"Bhai maine {plan_label} educational pass ke liye ₹{amount} pay kar diya hai (Trial: ₹{TRIAL_FEE_INR} | 1 Month: ₹9999 | Lifetime: ₹39999), mera unique scanner password dedo."
         )
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
 
@@ -922,6 +1031,8 @@ period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
 tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
 def render_terminal_body(cycle_count=0):
+    enforce_session_and_expiry()
+
     active_sym_label = selected_asset
     active_ticker = ticker
     active_category = category
