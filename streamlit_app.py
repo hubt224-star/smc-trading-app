@@ -787,6 +787,78 @@ ASSET_DICT = {
     }
 }
 
+@st.cache_data(ttl=45, show_spinner=False)
+def compute_smc_df(sym, tf, prd):
+    df = yf.download(sym, period=prd, interval=tf, progress=False, auto_adjust=False)
+    if df is None or df.empty:
+        return pd.DataFrame()
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = df.columns.get_level_values(0)
+    df = df.dropna(subset=["Open", "High", "Low", "Close"]).copy()
+    if len(df) < 25:
+        return pd.DataFrame()
+
+    df["ATR"] = ta.volatility.average_true_range(df["High"], df["Low"], df["Close"], window=14)
+    df["EMA20"] = ta.trend.ema_indicator(df["Close"], window=20)
+    df["EMA200"] = ta.trend.ema_indicator(df["Close"], window=200)
+    df["RSI"] = ta.momentum.rsi(df["Close"], window=14)
+
+    df["Order_Flow"] = "NEUTRAL"
+    df.loc[(df["EMA20"] > df["EMA200"]) & (df["Close"] > df["EMA200"]), "Order_Flow"] = "BULLISH"
+    df.loc[(df["EMA20"] < df["EMA200"]) & (df["Close"] < df["EMA200"]), "Order_Flow"] = "BEARISH"
+
+    df["Recent_Swing_High"] = df["High"].rolling(window=10).max()
+    df["Recent_Swing_Low"] = df["Low"].rolling(window=10).min()
+
+    prev_sh = df["Recent_Swing_High"].shift(1)
+    prev_sl = df["Recent_Swing_Low"].shift(1)
+
+    df["BOS_Bullish"] = df["Close"] > prev_sh
+    df["BOS_Bearish"] = df["Close"] < prev_sl
+
+    # Liquidity Sweep (wick beyond prior swing high/low with close back inside)
+    df["BSL_Sweep"] = (df["High"] > prev_sh) & (df["Close"] < prev_sh)
+    df["SSL_Sweep"] = (df["Low"] < prev_sl) & (df["Close"] > prev_sl)
+
+    df["Bullish_FVG"] = (df["Low"] > df["High"].shift(2))
+    df["Bearish_FVG"] = (df["High"] < df["Low"].shift(2))
+
+    df["Bullish_OB"] = (df["Close"].shift(1) < df["Open"].shift(1)) & (df["Close"] > prev_sh)
+    df["Bearish_OB"] = (df["Close"].shift(1) > df["Open"].shift(1)) & (df["Close"] < prev_sl)
+
+    price_range = (df["High"].rolling(10).max() - df["Low"].rolling(10).min()) / df["Close"]
+    df["Consolidation"] = price_range < 0.002
+
+    df["Setup"] = "NEUTRAL / NO SETUP"
+    buy_cond = (df["BOS_Bullish"] | df["Bullish_FVG"]) & (df["Order_Flow"] == "BULLISH") & (df["RSI"] > 45) & (~df["Consolidation"])
+    sell_cond = (df["BOS_Bearish"] | df["Bearish_FVG"]) & (df["Order_Flow"] == "BEARISH") & (df["RSI"] < 55) & (~df["Consolidation"])
+
+    df.loc[buy_cond, "Setup"] = "BULLISH SETUP"
+    df.loc[sell_cond, "Setup"] = "BEARISH SETUP"
+    return df
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_mtf_bias(sym):
+    out = {"5m": "NEUTRAL", "15m": "NEUTRAL", "1h": "NEUTRAL"}
+    tf_cfg = [("5m", "5d"), ("15m", "10d"), ("1h", "1mo")]
+    for tf_name, p_name in tf_cfg:
+        d = compute_smc_df(sym, tf_name, p_name)
+        if not d.empty:
+            out[tf_name] = str(d["Order_Flow"].iloc[-1])
+    return out
+
+def get_ist_killzone_label():
+    ist_now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    mins = ist_now.hour * 60 + ist_now.minute
+    if 555 <= mins <= 630:       # 09:15 - 10:30 IST
+        return "🔥 Opening Killzone (09:15-10:30)"
+    elif 630 < mins < 810:      # 10:30 - 13:30 IST
+        return "💤 Mid-Day Range (10:30-13:30)"
+    elif 810 <= mins <= 930:    # 13:30 - 15:30 IST
+        return "⚡ Afternoon / Closing Session (13:30-15:30)"
+    else:
+        return "🌙 Off-Market / After Hours"
+
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
 selected_asset = st.sidebar.selectbox("Select Symbol", list(ASSET_DICT[category].keys()))
@@ -808,53 +880,18 @@ strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)
 
 tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
-data = yf.download(ticker, period=period_map[timeframe], interval=timeframe)
+data = compute_smc_df(ticker, timeframe, period_map[timeframe])
 
 if not data.empty:
-    if isinstance(data.columns, pd.MultiIndex):
-        data.columns = data.columns.get_level_values(0)
-
-    # Indicator Calculations
-    data['ATR'] = ta.volatility.average_true_range(data['High'], data['Low'], data['Close'], window=14)
-    data['EMA20'] = ta.trend.ema_indicator(data['Close'], window=20)
-    data['EMA200'] = ta.trend.ema_indicator(data['Close'], window=200)
-    data['RSI'] = ta.momentum.rsi(data['Close'], window=14)
-
-    # Order Flow Filter
-    data['Order_Flow'] = "NEUTRAL"
-    data.loc[(data['EMA20'] > data['EMA200']) & (data['Close'] > data['EMA200']), 'Order_Flow'] = "BULLISH"
-    data.loc[(data['EMA20'] < data['EMA200']) & (data['Close'] < data['EMA200']), 'Order_Flow'] = "BEARISH"
-
-    # Advanced Swing BOS / ChoCH Logic
-    data['Recent_Swing_High'] = data['High'].rolling(window=10).max()
-    data['Recent_Swing_Low'] = data['Low'].rolling(window=10).min()
-
-    data['BOS_Bullish'] = data['Close'] > data['Recent_Swing_High'].shift(1)
-    data['BOS_Bearish'] = data['Close'] < data['Recent_Swing_Low'].shift(1)
-
-    data['Bullish_FVG'] = (data['Low'] > data['High'].shift(2))
-    data['Bearish_FVG'] = (data['High'] < data['Low'].shift(2))
-
-    data['Bullish_OB'] = (data['Close'].shift(1) < data['Open'].shift(1)) & (data['Close'] > data['Recent_Swing_High'].shift(1))
-    data['Bearish_OB'] = (data['Close'].shift(1) > data['Open'].shift(1)) & (data['Close'] < data['Recent_Swing_Low'].shift(1))
-
-    price_range = (data['High'].rolling(10).max() - data['Low'].rolling(10).min()) / data['Close']
-    data['Consolidation'] = price_range < 0.002
-
-    data['Setup'] = "NEUTRAL / NO SETUP"
-
-    buy_cond = (data['BOS_Bullish'] | data['Bullish_FVG']) & (data['Order_Flow'] == "BULLISH") & (data['RSI'] > 45) & (~data['Consolidation'])
-    sell_cond = (data['BOS_Bearish'] | data['Bearish_FVG']) & (data['Order_Flow'] == "BEARISH") & (data['RSI'] < 55) & (~data['Consolidation'])
-
-    data.loc[buy_cond, 'Setup'] = "BULLISH SETUP"
-    data.loc[sell_cond, 'Setup'] = "BEARISH SETUP"
-
     latest_setup = data['Setup'].iloc[-1]
     latest_price = data['Close'].iloc[-1]
     latest_atr = data['ATR'].iloc[-1]
     latest_rsi = data['RSI'].iloc[-1]
     latest_of = data['Order_Flow'].iloc[-1]
     is_consolidating = data['Consolidation'].iloc[-1]
+    bsl_swept = bool(data['BSL_Sweep'].iloc[-1])
+    ssl_swept = bool(data['SSL_Sweep'].iloc[-1])
+    killzone_txt = get_ist_killzone_label()
 
     # Automatic Telegram Notification Dispatcher
     if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
@@ -917,15 +954,22 @@ if not data.empty:
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # --- 📊 MULTI-TIMEFRAME CONFLUENCE MATRIX ---
+    # Liquidity Sweep & Session Bar
+    sweep_label = "🔴 BSL Swept (High Hunt)" if bsl_swept else ("🟢 SSL Swept (Low Hunt)" if ssl_swept else "⚪ No Active Sweep")
+    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}")
+
+    # --- 📊 REAL MULTI-TIMEFRAME CONFLUENCE MATRIX ---
     st.markdown("---")
     st.markdown("### 📊 Multi-Timeframe Confluence Grid")
+    mtf_data = get_mtf_bias(ticker)
+    mtf_5m = mtf_data.get("5m", latest_of)
+    mtf_15m = mtf_data.get("15m", latest_of)
+    mtf_1h = mtf_data.get("1h", "BULLISH" if latest_price > data['EMA200'].iloc[-1] else "BEARISH")
+
+    if mtf_5m == mtf_15m == mtf_1h and mtf_5m in ["BULLISH", "BEARISH"]:
+        st.success(f"🔥 **A+ TRIPLE CONFLUENCE:** 5m, 15m & 1h all aligned **{mtf_5m}**.")
+
     mtf_cols = st.columns(3)
-
-    mtf_5m = latest_of
-    mtf_15m = latest_of
-    mtf_1h = "BULLISH" if latest_price > data['EMA200'].iloc[-1] else "BEARISH"
-
     with mtf_cols[0]:
         st.markdown(f"**5m Timeframe**<br><div class='{'confluence-badge-green' if mtf_5m=='BULLISH' else 'confluence-badge-red'}'>{mtf_5m}</div>", unsafe_allow_html=True)
     with mtf_cols[1]:
@@ -1001,7 +1045,7 @@ if not data.empty:
         if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
             st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
 
-    # --- LIVE CHART ENGINE ---
+    # --- LIVE CHART ENGINE (WITH VISUAL FVG, OB & BOS OVERLAYS) ---
     st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
 
     if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
@@ -1030,16 +1074,92 @@ if not data.empty:
         """
         components.html(tv_html, height=520)
     else:
+        chart_df = data.tail(120).copy()
         fig = go.Figure()
         fig.add_trace(go.Candlestick(
-            x=data.index, open=data['Open'], high=data['High'], low=data['Low'], close=data['Close'], name="Price"
+            x=chart_df.index, open=chart_df['Open'], high=chart_df['High'], low=chart_df['Low'], close=chart_df['Close'], name="Price"
         ))
         fig.add_trace(go.Scatter(
-            x=data.index, y=data['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
+            x=chart_df.index, y=chart_df['EMA20'], mode='lines', name='20 EMA', line=dict(color='cyan', width=1)
         ))
         fig.add_trace(go.Scatter(
-            x=data.index, y=data['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
+            x=chart_df.index, y=chart_df['EMA200'], mode='lines', name='200 EMA Filter', line=dict(color='orange', width=2)
         ))
+
+        end_x = chart_df.index[-1]
+
+        # Plot recent Bullish/Bearish FVG boxes
+        fvg_boxes = 0
+        for idx in range(len(chart_df) - 1, max(-1, len(chart_df) - 35), -1):
+            if fvg_boxes >= 4:
+                break
+            ts = chart_df.index[idx]
+            if bool(chart_df['Bullish_FVG'].iloc[idx]) and idx >= 2:
+                y0 = float(chart_df['High'].iloc[idx - 2])
+                y1 = float(chart_df['Low'].iloc[idx])
+                if y1 > y0:
+                    fig.add_shape(
+                        type="rect", x0=ts, x1=end_x, y0=y0, y1=y1,
+                        fillcolor="rgba(46, 204, 113, 0.16)",
+                        line=dict(color="rgba(46, 204, 113, 0.55)", width=1, dash="dot")
+                    )
+                    fvg_boxes += 1
+            elif bool(chart_df['Bearish_FVG'].iloc[idx]) and idx >= 2:
+                y0 = float(chart_df['High'].iloc[idx])
+                y1 = float(chart_df['Low'].iloc[idx - 2])
+                if y1 > y0:
+                    fig.add_shape(
+                        type="rect", x0=ts, x1=end_x, y0=y0, y1=y1,
+                        fillcolor="rgba(231, 76, 60, 0.16)",
+                        line=dict(color="rgba(231, 76, 60, 0.55)", width=1, dash="dot")
+                    )
+                    fvg_boxes += 1
+
+        # Plot recent Order Block zones
+        ob_boxes = 0
+        for idx in range(len(chart_df) - 1, max(0, len(chart_df) - 35), -1):
+            if ob_boxes >= 3:
+                break
+            prev_ts = chart_df.index[idx - 1]
+            if bool(chart_df['Bullish_OB'].iloc[idx]):
+                y0 = float(min(chart_df['Open'].iloc[idx - 1], chart_df['Close'].iloc[idx - 1]))
+                y1 = float(max(chart_df['Open'].iloc[idx - 1], chart_df['Close'].iloc[idx - 1]))
+                fig.add_shape(
+                    type="rect", x0=prev_ts, x1=end_x, y0=y0, y1=y1,
+                    fillcolor="rgba(0, 212, 255, 0.14)",
+                    line=dict(color="rgba(0, 212, 255, 0.65)", width=1)
+                )
+                ob_boxes += 1
+            elif bool(chart_df['Bearish_OB'].iloc[idx]):
+                y0 = float(min(chart_df['Open'].iloc[idx - 1], chart_df['Close'].iloc[idx - 1]))
+                y1 = float(max(chart_df['Open'].iloc[idx - 1], chart_df['Close'].iloc[idx - 1]))
+                fig.add_shape(
+                    type="rect", x0=prev_ts, x1=end_x, y0=y0, y1=y1,
+                    fillcolor="rgba(241, 196, 15, 0.14)",
+                    line=dict(color="rgba(241, 196, 15, 0.65)", width=1)
+                )
+                ob_boxes += 1
+
+        # Plot BOS markers on chart
+        bos_b_df = chart_df[chart_df['BOS_Bullish']].tail(5)
+        if not bos_b_df.empty:
+            fig.add_trace(go.Scatter(
+                x=bos_b_df.index, y=bos_b_df['High'] * 1.001,
+                mode='markers+text', name='BOS Bullish',
+                text=['BOS↑'] * len(bos_b_df), textposition='top center',
+                textfont=dict(color='#2ecc71', size=10),
+                marker=dict(symbol='triangle-up', size=9, color='#2ecc71')
+            ))
+
+        bos_s_df = chart_df[chart_df['BOS_Bearish']].tail(5)
+        if not bos_s_df.empty:
+            fig.add_trace(go.Scatter(
+                x=bos_s_df.index, y=bos_s_df['Low'] * 0.999,
+                mode='markers+text', name='BOS Bearish',
+                text=['BOS↓'] * len(bos_s_df), textposition='bottom center',
+                textfont=dict(color='#e74c3c', size=10),
+                marker=dict(symbol='triangle-down', size=9, color='#e74c3c')
+            ))
 
         if latest_setup != "NEUTRAL / NO SETUP":
             fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
@@ -1052,6 +1172,37 @@ if not data.empty:
             margin=dict(l=10, r=10, t=30, b=10)
         )
         st.plotly_chart(fig, use_container_width=True)
+
+    # --- 🌐 ALL-MARKET LIVE SMC SCANNER ---
+    st.markdown("---")
+    st.subheader(f"🌐 All-Market Live SMC Scanner ({timeframe})")
+    watchlist_items = [
+        ("Nifty 50", "^NSEI"),
+        ("Bank Nifty", "^NSEBANK"),
+        ("Fin Nifty", "NIFTY_FIN_SERVICE.NS"),
+        ("Sensex", "^BSESN"),
+        ("Bankex", "BSE-BANK.BO"),
+        ("Reliance", "RELIANCE.NS"),
+        ("TCS", "TCS.NS"),
+        ("HDFC Bank", "HDFCBANK.NS"),
+        ("Gold Futures", "GC=F"),
+        ("Silver Futures", "SI=F"),
+        ("Crude Oil", "CL=F"),
+    ]
+    scan_rows = []
+    for sym_label, sym_code in watchlist_items:
+        s_df = compute_smc_df(sym_code, timeframe, period_map[timeframe])
+        if not s_df.empty:
+            scan_rows.append({
+                "Asset": sym_label,
+                "Price": round(float(s_df["Close"].iloc[-1]), 2),
+                "Order Flow": str(s_df["Order_Flow"].iloc[-1]),
+                "RSI": round(float(s_df["RSI"].iloc[-1]), 1),
+                "Setup": str(s_df["Setup"].iloc[-1]),
+            })
+    if scan_rows:
+        scan_df = pd.DataFrame(scan_rows)
+        st.dataframe(scan_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
 
     st.subheader("Live Market SMC Analytics Table")
 
