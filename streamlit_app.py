@@ -50,6 +50,15 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+def color_table_setup(val):
+    if val == "BULLISH SETUP":
+        return 'background-color: #0e3a1f; color: #2ecc71; font-weight: bold;'
+    elif val == "BEARISH SETUP":
+        return 'background-color: #3a0e0e; color: #e74c3c; font-weight: bold;'
+    elif val == "CONSOLIDATION PHASE":
+        return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
+    return ''
+
 # --- UNIQUE CLIENT LOGIN DATABASE SETUP (1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM LOCK + CLEAN DELETE) ---
 CLIENTS_FILE = "clients.json"
 CLAIMS_HISTORY_FILE = "claimed_keys_history.json"
@@ -1205,15 +1214,6 @@ if not data.empty:
         st.dataframe(scan_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
 
     st.subheader("Live Market SMC Analytics Table")
-
-    def color_table_setup(val):
-        if val == "BULLISH SETUP":
-            return 'background-color: #0e3a1f; color: #2ecc71; font-weight: bold;'
-        elif val == "BEARISH SETUP":
-            return 'background-color: #3a0e0e; color: #e74c3c; font-weight: bold;'
-        elif val == "CONSOLIDATION PHASE":
-            return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
-        return ''
 
     # Clean DataFrame & Round Decimals to Prevent Mobile Overlap/Glitch
     table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12).copy()
