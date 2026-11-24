@@ -771,15 +771,15 @@ st.session_state["sound_alerts_enabled"] = st.sidebar.checkbox(
 
 # Asset Details Dictionary
 ASSET_METADATA = {
-    "^NSEI": {"name": "Nifty 50", "step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"},
-    "^NSEBANK": {"name": "Bank Nifty", "step": 100, "lot": 15, "tv_symbol": "NSE:BANKNIFTY"},
-    "NIFTY_FIN_SERVICE.NS": {"name": "Fin Nifty", "step": 50, "lot": 25, "tv_symbol": "NSE:FINNIFTY"},
-    "^BSESN": {"name": "Sensex", "step": 100, "lot": 10, "tv_symbol": "BSE:SENSEX"},
-    "BSE-BANK.BO": {"name": "Bankex", "step": 100, "lot": 15, "tv_symbol": "BSE:BANKEX"},
-    "RELIANCE.NS": {"name": "Reliance", "step": 20, "lot": 250, "tv_symbol": "NSE:RELIANCE"},
-    "TCS.NS": {"name": "TCS", "step": 50, "lot": 175, "tv_symbol": "NSE:TCS"},
-    "HDFCBANK.NS": {"name": "HDFC Bank", "step": 10, "lot": 550, "tv_symbol": "NSE:HDFCBANK"},
-    "TATAMOTORS.NS": {"name": "Tata Motors", "step": 10, "lot": 550, "tv_symbol": "NSE:TATAMOTORS"}
+    "^NSEI": {"name": "Nifty 50", "tv_symbol": "NSE:NIFTY"},
+    "^NSEBANK": {"name": "Bank Nifty", "tv_symbol": "NSE:BANKNIFTY"},
+    "NIFTY_FIN_SERVICE.NS": {"name": "Fin Nifty", "tv_symbol": "NSE:FINNIFTY"},
+    "^BSESN": {"name": "Sensex", "tv_symbol": "BSE:SENSEX"},
+    "BSE-BANK.BO": {"name": "Bankex", "tv_symbol": "BSE:BANKEX"},
+    "RELIANCE.NS": {"name": "Reliance", "tv_symbol": "NSE:RELIANCE"},
+    "TCS.NS": {"name": "TCS", "tv_symbol": "NSE:TCS"},
+    "HDFCBANK.NS": {"name": "HDFC Bank", "tv_symbol": "NSE:HDFCBANK"},
+    "TATAMOTORS.NS": {"name": "Tata Motors", "tv_symbol": "NSE:TATAMOTORS"}
 }
 
 ASSET_DICT = {
@@ -919,13 +919,6 @@ if custom_ticker.strip():
 timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=1)
 period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
 
-st.sidebar.header("Risk Management (Study Math)")
-capital = st.sidebar.number_input("Practice Capital (₹/$)", value=100000, step=5000)
-risk_per_trade = st.sidebar.slider("Risk Budget (%)", 0.5, 5.0, 1.0)
-
-st.sidebar.header("🎯 Strike Mapping View (Study)")
-strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)", "ITM 1 (In The Money)", "OTM 1 (Out of The Money)"])
-
 tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
 def render_terminal_body(cycle_count=0):
@@ -980,6 +973,7 @@ def render_terminal_body(cycle_count=0):
     killzone_txt = get_ist_killzone_label()
     pdh_val, pdl_val = get_pdh_pdl(active_ticker)
     sound_on = bool(st.session_state.get("sound_alerts_enabled", True))
+    tv_symbol = ASSET_METADATA.get(active_ticker, {}).get("tv_symbol", "NSE:NIFTY")
 
     # Educational Telegram Study Note Dispatcher
     if latest_setup in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
@@ -988,34 +982,6 @@ def render_terminal_body(cycle_count=0):
             msg = f"📚 *SMC STUDY ZONE NOTE (Educational)*\n\n📈 *Symbol:* {active_sym_label}\n🧭 *Zone:* {latest_setup}\n💰 *Spot:* ₹{latest_price:.2f}\n📊 *RSI:* {latest_rsi:.1f}\n🕒 *Timeframe:* {timeframe}\n\n_For learning & chart study only — Not SEBI advice_"
             send_telegram_alert(st.session_state["tg_token"], st.session_state["tg_chat"], msg)
             st.session_state["last_alert_sent"] = alert_key
-
-    trail_status = "⚪ Inactive"
-    if latest_setup == "BULLISH STUDY ZONE":
-        sl = latest_price - (1.5 * latest_atr)
-        target = latest_price + (3.0 * latest_atr)
-        one_to_one = latest_price + (1.5 * latest_atr)
-        if latest_price >= one_to_one:
-            sl = latest_price
-            trail_status = "🛡️ Breakeven / Trail Ref Active"
-        else:
-            trail_status = "🎯 Tracking Toward 1:1 Ref"
-        risk_amount = (capital * risk_per_trade) / 100
-        stop_loss_points = abs(latest_price - sl)
-        position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
-    elif latest_setup == "BEARISH STUDY ZONE":
-        sl = latest_price + (1.5 * latest_atr)
-        target = latest_price - (3.0 * latest_atr)
-        one_to_one = latest_price - (1.5 * latest_atr)
-        if latest_price <= one_to_one:
-            sl = latest_price
-            trail_status = "🛡️ Breakeven / Trail Ref Active"
-        else:
-            trail_status = "🎯 Tracking Toward 1:1 Ref"
-        risk_amount = (capital * risk_per_trade) / 100
-        stop_loss_points = abs(latest_price - sl)
-        position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
-    else:
-        sl, target, position_size = 0.0, 0.0, 0
 
     if latest_setup in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"]:
         setup_sig_key = f"{active_ticker}_{timeframe}_{latest_setup}_{str(data.index[-1])}"
@@ -1026,11 +992,11 @@ def render_terminal_body(cycle_count=0):
                 "Time (IST)": ist_time_str,
                 "Asset": active_sym_label,
                 "TF": timeframe,
-                "Setup": latest_setup,
-                "Ref Price": round(latest_price, 2),
-                "SL Ref": round(sl, 2),
-                "Target Ref": round(target, 2),
-                "Trail Ref": trail_status,
+                "Study Zone": latest_setup,
+                "Order Flow": latest_of,
+                "Spot Price": round(latest_price, 2),
+                "RSI": round(latest_rsi, 1),
+                "ATR (14)": round(latest_atr, 2),
             })
             st.session_state["session_setup_log"] = st.session_state["session_setup_log"][:50]
 
@@ -1077,7 +1043,7 @@ def render_terminal_body(cycle_count=0):
     pdh_pdl_txt = f"PDH: {pdh_val:.2f} | PDL: {pdl_val:.2f}" if (pdh_val is not None and pdl_val is not None) else "PDH/PDL: N/A"
     sweep_label = "🔴 BSL Swept (High Hunt)" if bsl_swept else ("🟢 SSL Swept (Low Hunt)" if ssl_swept else "⚪ No Active Sweep")
     sound_txt = "🔊 Sound ON" if sound_on else "🔇 Sound Muted"
-    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **Trail Ref:** {trail_status}  |  **{pdh_pdl_txt}**  |  {sound_txt}")
+    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **ATR (14):** {latest_atr:.2f}  |  **{pdh_pdl_txt}**  |  {sound_txt}")
 
     # --- 📊 REAL MULTI-TIMEFRAME CONFLUENCE MATRIX ---
     st.markdown("---")
@@ -1098,88 +1064,8 @@ def render_terminal_body(cycle_count=0):
     with mtf_cols[2]:
         st.markdown(f"**1h Timeframe**<br><div class='{'confluence-badge-green' if mtf_1h=='BULLISH' else 'confluence-badge-red'}'>{mtf_1h}</div>", unsafe_allow_html=True)
 
-    # --- 🎯 STRIKE PRICE MAPPING & OPTIONS MATRIX ENGINE (EDUCATIONAL) ---
-    meta = ASSET_METADATA.get(active_ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
-    step = meta["step"]
-    lot_size = meta["lot"]
-    tv_symbol = meta["tv_symbol"]
-
-    atm_strike = round(latest_price / step) * step
-
-    mapped_strike = atm_strike
-    contract_type = "CE" if latest_setup == "BULLISH STUDY ZONE" else ("PE" if latest_setup == "BEARISH STUDY ZONE" else "CE/PE")
-
-    if latest_setup == "BULLISH STUDY ZONE":
-        if "ITM" in strike_type:
-            mapped_strike = atm_strike - step
-        elif "OTM" in strike_type:
-            mapped_strike = atm_strike + step
-    elif latest_setup == "BEARISH STUDY ZONE":
-        if "ITM" in strike_type:
-            mapped_strike = atm_strike + step
-        elif "OTM" in strike_type:
-            mapped_strike = atm_strike - step
-
-    total_lots = max(1, position_size // lot_size) if position_size > 0 else 0
-
-    st.markdown("---")
-    st.markdown("### 📈 Option Strike Concept & Sentiment Heatboard (Study)")
-
-    opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
-
-    est_pcr = round(1.25 if latest_of == "BULLISH" else (0.75 if latest_of == "BEARISH" else 0.98), 2)
-    pcr_bias = "Bullish Bias (Study)" if est_pcr > 1.0 else ("Bearish Bias (Study)" if est_pcr < 0.9 else "Neutral")
-
-    if latest_setup == "BULLISH STUDY ZONE":
-        opt_col1.markdown(f"""
-        <div style="background-color:#143d22; border: 2px solid #2ecc71; padding:10px; border-radius:8px; text-align:center;">
-            <span style="color:#2ecc71; font-size:12px; font-weight:bold;">EDUCATIONAL CE CONCEPT</span>
-            <h2 style="color:#ffffff; margin:0;">{mapped_strike} CE</h2>
-            <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
-        </div>
-        """, unsafe_allow_html=True)
-    elif latest_setup == "BEARISH STUDY ZONE":
-        opt_col1.markdown(f"""
-        <div style="background-color:#3d1414; border: 2px solid #e74c3c; padding:10px; border-radius:8px; text-align:center;">
-            <span style="color:#e74c3c; font-size:12px; font-weight:bold;">EDUCATIONAL PE CONCEPT</span>
-            <h2 style="color:#ffffff; margin:0;">{mapped_strike} PE</h2>
-            <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        opt_col1.info("⏳ Waiting for Study Zone...")
-
-    opt_col2.metric("Spot SL Ref", f"₹ {sl:.2f}" if sl > 0 else "N/A")
-    opt_col3.metric("Spot Target Ref (1:2)", f"₹ {target:.2f}" if target > 0 else "N/A")
-    opt_col4.metric("Est. PCR Ratio (Study)", f"{est_pcr}", delta=pcr_bias)
-
-    st.markdown("---")
-
-    row2_1, row2_2, row2_3 = st.columns(3)
-    row2_1.metric("Est. Spot SL Ref", f"{sl:.2f}" if sl > 0 else "N/A")
-    row2_2.metric("Est. Spot Target Ref", f"{target:.2f}" if target > 0 else "N/A")
-    row2_3.metric("Risk Math Qty Model", f"{position_size} Qty ({total_lots} Lots)" if position_size > 0 else "N/A")
-
-    if latest_setup in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"]:
-        summary_text = (
-            f"📚 SMC Study Note (Educational) — {active_sym_label} ({timeframe})\n"
-            f"• Zone: {latest_setup} | Order Flow: {latest_of}\n"
-            f"• Strike Concept: {mapped_strike} {contract_type} ({strike_type.split()[0]})\n"
-            f"• Spot Reference: {latest_price:.2f}\n"
-            f"• SL Ref: {sl:.2f} | Target Ref (1:2): {target:.2f}\n"
-            f"• Trail Ref: {trail_status}\n"
-            f"(Educational study note only — Not SEBI advice)"
-        )
-        with st.expander("📋 Copy-Ready Study Summary Note", expanded=False):
-            st.code(summary_text, language="text")
-
-    if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO STUDY ZONE":
-        active_b = st.session_state.get('active_broker', 'Broker')
-        st.markdown(f"### ⚡ Study Payload Inspector ({active_b})")
-        if st.button(f"🔍 Inspect Study Payload: {active_sym_label} {mapped_strike} {contract_type}", key="exec_trade_btn"):
-            st.info(f"Educational Study Payload Preview for {active_sym_label} {mapped_strike} {contract_type} ({total_lots} Lots). No live order placed; educational practice only.")
-
     # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + SWEEP + PDH/PDL) ---
+    st.markdown("---")
     st.subheader(f"Live Chart ({active_sym_label} - {timeframe})")
 
     w_cols = st.columns([1, 1, 1, 2])
@@ -1375,10 +1261,6 @@ def render_terminal_body(cycle_count=0):
                 marker=dict(symbol='x', size=8, color='#34d399')
             ))
 
-        if latest_setup != "NEUTRAL / NO STUDY ZONE":
-            fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="SL Ref")
-            fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target Ref")
-
         fig.update_layout(
             uirevision=f"{active_ticker}_{timeframe}_{win_n}_zoom_lock",
             xaxis_rangeslider_visible=False,
@@ -1395,7 +1277,7 @@ def render_terminal_body(cycle_count=0):
         st.markdown("---")
         st.subheader("📜 Session Study Log")
         log_df = pd.DataFrame(st.session_state["session_setup_log"])
-        st.dataframe(log_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
+        st.dataframe(log_df.style.map(color_table_setup, subset=["Study Zone"]), use_container_width=True, hide_index=True)
 
         log_c1, log_c2 = st.columns([1, 1])
         with log_c1:
@@ -1469,7 +1351,7 @@ def render_terminal_body(cycle_count=0):
     st.dataframe(styled_table, use_container_width=True)
 
     st.markdown("---")
-    st.caption("⚠️ **Disclaimer:** All indicators, study zones, and calculators provided in this terminal are strictly for learning, technical analysis practice, and educational chart study purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
+    st.caption("⚠️ **Disclaimer:** All indicators, study zones, and charts provided in this terminal are strictly for learning, technical analysis practice, and educational chart study purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
 
 if hasattr(st, "fragment"):
     if refresh_ms > 0:
