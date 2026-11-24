@@ -51,9 +51,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def color_table_setup(val):
-    if val == "BULLISH SETUP":
+    if val == "BULLISH STUDY ZONE":
         return 'background-color: #0e3a1f; color: #2ecc71; font-weight: bold;'
-    elif val == "BEARISH SETUP":
+    elif val == "BEARISH STUDY ZONE":
         return 'background-color: #3a0e0e; color: #e74c3c; font-weight: bold;'
     elif val == "CONSOLIDATION PHASE":
         return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
@@ -364,7 +364,7 @@ def load_clients():
 clients_db = load_clients()
 claims_history = load_claims_history()
 
-# Telegram Alert Function
+# Educational Study Notification Function
 def send_telegram_alert(token, chat_id, message):
     if token and chat_id:
         url = f"https://api.telegram.org/bot{token}/sendMessage"
@@ -376,7 +376,7 @@ def send_telegram_alert(token, chat_id, message):
 
 # Sidebar Configuration
 st.sidebar.markdown("### 🚀 Terminal Access Pro")
-st.sidebar.caption("Mentor: Mr. Yusuf")
+st.sidebar.caption("Mentor: Mr. Yusuf | Educational Use")
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Unique Client Login")
 
@@ -399,6 +399,8 @@ defaults = {
     "candle_window": 120,
     "session_setup_log": [],
     "logged_setup_keys": [],
+    "sound_alerts_enabled": True,
+    "quick_override_symbol": None,
 }
 for k, v in defaults.items():
     if k not in st.session_state:
@@ -601,7 +603,7 @@ if st.session_state["authenticated"]:
                     del st.query_params["sid"]
                 st.rerun()
 
-        with st.sidebar.expander("📢 Telegram Alerts Config"):
+        with st.sidebar.expander("📢 Telegram Study Alerts Config"):
             tg_token = st.text_input("Bot Token", key="tg_token_val")
             tg_chat = st.text_input("Chat / Channel ID", key="tg_chat_val")
             st.session_state["tg_token"] = tg_token
@@ -620,8 +622,8 @@ else:
 
 # Locked Screen View + Instant Passclaim Sandbox (1 Month ₹9999 / Lifetime ₹39999)
 if not st.session_state["authenticated"]:
-    st.title("⚡ Institutional SMC Terminal Pro")
-    st.error("🔒 Premium Scanner Locked! 1 Month (₹9999) ya Lifetime (₹39999) plan lekar access paayein.")
+    st.title("⚡ Institutional SMC Analytics Terminal Pro")
+    st.error("🔒 Learning Terminal Locked! 1 Month (₹9999) ya Lifetime (₹39999) educational pass lekar access paayein. *(Educational charting tool only — SEBI-registered tip/advice nahi hai.)*")
 
     st.markdown("### 🚀 Plans: 1 Month — ₹9999 | Lifetime — ₹39999")
 
@@ -645,10 +647,10 @@ if not st.session_state["authenticated"]:
 
     with col2:
         st.markdown(f"""
-        **Selected Plan:** **{plan_label} — ₹{amount}** *(1 Month: ₹9999 | Lifetime: ₹39999)*
+        **Selected Plan:** **{plan_label} — ₹{amount}** *(1 Month: ₹9999 | Lifetime: ₹39999 — Educational Access)*
 
         **Steps to unlock access:**
-        1. Scan QR & pay **₹{amount}** for **{plan_label}** plan.
+        1. Scan QR & pay **₹{amount}** for **{plan_label}** educational pass.
         2. Enter your payment UTR / Transaction ID below to instantly generate & claim your password key!
         3. Note: Each ID supports **single-device active session** only. **One-time claim only** — same Phone ya UTR se dubara key generate nahi hogi.
         """)
@@ -698,7 +700,7 @@ if not st.session_state["authenticated"]:
                     )
 
                     wa_success_msg = urllib.parse.quote(
-                        f"Bhai maine {plan_label} plan ke liye ₹{amount} pay kar diya hai (1M: ₹9999 / Life: ₹39999). Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai."
+                        f"Bhai maine {plan_label} educational pass ke liye ₹{amount} pay kar diya hai (1M: ₹9999 / Life: ₹39999). Mera Client ID {norm_claim_phone} aur Password {generated_pass} hai."
                     )
                     st.markdown(f'''
                         <a href="https://wa.me/918108433013?text={wa_success_msg}" target="_blank">
@@ -709,7 +711,7 @@ if not st.session_state["authenticated"]:
                         ''', unsafe_allow_html=True)
 
         wa_text = urllib.parse.quote(
-            f"Bhai maine {plan_label} plan ke liye ₹{amount} pay kar diya hai (1 Month: ₹9999 | Lifetime: ₹39999), mera unique scanner password dedo."
+            f"Bhai maine {plan_label} educational pass ke liye ₹{amount} pay kar diya hai (1 Month: ₹9999 | Lifetime: ₹39999), mera unique scanner password dedo."
         )
         wa_url = f"https://wa.me/918108433013?text={wa_text}"
 
@@ -749,17 +751,23 @@ with st.sidebar.expander(f"Connect {selected_broker} Account", expanded=False):
 
             st.session_state['broker_connected'] = True
             st.session_state['active_broker'] = selected_broker
-            st.sidebar.success(f"✅ Connected to {selected_broker} Successfully!")
+            st.sidebar.success(f"✅ Connected to {selected_broker} Successfully (Study Profile)!")
         else:
             st.sidebar.error("❌ Please fill in the required credentials.")
 
 if st.session_state.get('broker_connected', False):
     st.sidebar.info(f"🟢 Active Broker: {st.session_state.get('active_broker', 'None')}")
 
-# Refresh & Chart Zoom Controls
+# Refresh & Alert Sound Controls
 refresh_mode = st.sidebar.selectbox("⏱️ Auto-Refresh Rate", ["15s (Smooth Zoom)", "5s (Fast Live)", "30s", "Off (Manual)"], index=0)
 interval_map = {"5s (Fast Live)": 5000, "15s (Smooth Zoom)": 15000, "30s": 30000, "Off (Manual)": 0}
 refresh_ms = interval_map.get(refresh_mode, 15000)
+
+st.session_state["sound_alerts_enabled"] = st.sidebar.checkbox(
+    "🔊 Study Zone Alert Sound",
+    value=bool(st.session_state.get("sound_alerts_enabled", True)),
+    key="sound_alert_toggle_cb"
+)
 
 # Asset Details Dictionary
 ASSET_METADATA = {
@@ -827,11 +835,9 @@ def compute_smc_df(sym, tf, prd):
     df["BOS_Bullish"] = df["Close"] > prev_sh
     df["BOS_Bearish"] = df["Close"] < prev_sl
 
-    # CHoCH (Change of Character: swing break opposing prior order flow)
     df["CHoCH_Bullish"] = df["BOS_Bullish"] & (df["Order_Flow"].shift(1) == "BEARISH")
     df["CHoCH_Bearish"] = df["BOS_Bearish"] & (df["Order_Flow"].shift(1) == "BULLISH")
 
-    # Liquidity Sweep (wick beyond prior swing high/low with close back inside)
     df["BSL_Sweep"] = (df["High"] > prev_sh) & (df["Close"] < prev_sh)
     df["SSL_Sweep"] = (df["Low"] < prev_sl) & (df["Close"] > prev_sl)
 
@@ -844,12 +850,12 @@ def compute_smc_df(sym, tf, prd):
     price_range = (df["High"].rolling(10).max() - df["Low"].rolling(10).min()) / df["Close"]
     df["Consolidation"] = price_range < 0.002
 
-    df["Setup"] = "NEUTRAL / NO SETUP"
+    df["Setup"] = "NEUTRAL / NO STUDY ZONE"
     buy_cond = (df["BOS_Bullish"] | df["Bullish_FVG"]) & (df["Order_Flow"] == "BULLISH") & (df["RSI"] > 45) & (~df["Consolidation"])
     sell_cond = (df["BOS_Bearish"] | df["Bearish_FVG"]) & (df["Order_Flow"] == "BEARISH") & (df["RSI"] < 55) & (~df["Consolidation"])
 
-    df.loc[buy_cond, "Setup"] = "BULLISH SETUP"
-    df.loc[sell_cond, "Setup"] = "BEARISH SETUP"
+    df.loc[buy_cond, "Setup"] = "BULLISH STUDY ZONE"
+    df.loc[sell_cond, "Setup"] = "BEARISH STUDY ZONE"
     return df
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -881,14 +887,25 @@ def get_mtf_bias(sym):
 def get_ist_killzone_label():
     ist_now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
     mins = ist_now.hour * 60 + ist_now.minute
-    if 555 <= mins <= 630:       # 09:15 - 10:30 IST
+    if 555 <= mins <= 630:
         return "🔥 Opening Killzone (09:15-10:30)"
-    elif 630 < mins < 810:      # 10:30 - 13:30 IST
+    elif 630 < mins < 810:
         return "💤 Mid-Day Range (10:30-13:30)"
-    elif 810 <= mins <= 930:    # 13:30 - 15:30 IST
+    elif 810 <= mins <= 930:
         return "⚡ Afternoon / Closing Session (13:30-15:30)"
     else:
         return "🌙 Off-Market / After Hours"
+
+def get_candle_eta_label(tf):
+    ist_now = datetime.now(timezone(timedelta(hours=5, minutes=30)))
+    tf_seconds = {"5m": 300, "15m": 900, "1h": 3600, "1d": 86400}.get(tf, 900)
+    if tf == "1d":
+        return "Daily Bar (Close ~15:30 IST)"
+    sec_since_midnight = ist_now.hour * 3600 + ist_now.minute * 60 + ist_now.second
+    rem_sec = tf_seconds - (sec_since_midnight % tf_seconds)
+    mins_left = rem_sec // 60
+    secs_left = rem_sec % 60
+    return f"~{mins_left}m {secs_left:02d}s left"
 
 st.sidebar.header("Market Selection")
 category = st.sidebar.selectbox("Select Asset Category", list(ASSET_DICT.keys()))
@@ -902,20 +919,51 @@ if custom_ticker.strip():
 timeframe = st.sidebar.selectbox("Select Timeframe", ["5m", "15m", "1h", "1d"], index=1)
 period_map = {"5m": "1mo", "15m": "1mo", "1h": "3mo", "1d": "1y"}
 
-st.sidebar.header("Risk Management")
-capital = st.sidebar.number_input("Capital (₹/$)", value=100000, step=5000)
-risk_per_trade = st.sidebar.slider("Risk Per Trade (%)", 0.5, 5.0, 1.0)
+st.sidebar.header("Risk Management (Study Math)")
+capital = st.sidebar.number_input("Practice Capital (₹/$)", value=100000, step=5000)
+risk_per_trade = st.sidebar.slider("Risk Budget (%)", 0.5, 5.0, 1.0)
 
-st.sidebar.header("🎯 Strike Mapping View")
+st.sidebar.header("🎯 Strike Mapping View (Study)")
 strike_type = st.sidebar.selectbox("Select Strike Mapping", ["ATM (At The Money)", "ITM 1 (In The Money)", "OTM 1 (Out of The Money)"])
 
 tv_tf_map = {"5m": "5", "15m": "15", "1h": "60", "1d": "D"}
 
 def render_terminal_body(cycle_count=0):
-    st.title("⚡ Institutional SMC Analytics Terminal Pro")
-    st.caption(f"Refresh Mode: {refresh_mode} | Cycle Counter: {cycle_count}")
+    active_sym_label = selected_asset
+    active_ticker = ticker
+    active_category = category
 
-    data = compute_smc_df(ticker, timeframe, period_map[timeframe])
+    quick_map = {
+        "Nifty 50": ("^NSEI", "NSE Index / F&O"),
+        "Bank Nifty": ("^NSEBANK", "NSE Index / F&O"),
+        "Fin Nifty": ("NIFTY_FIN_SERVICE.NS", "NSE Index / F&O"),
+        "Sensex": ("^BSESN", "BSE Index / F&O"),
+        "Gold": ("GC=F", "Commodities (MCX / Global)"),
+    }
+    q_choice = st.session_state.get("quick_override_symbol")
+    if q_choice and q_choice in quick_map:
+        active_sym_label = q_choice
+        active_ticker, active_category = quick_map[q_choice]
+
+    ist_now_str = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%H:%M:%S IST")
+    candle_eta = get_candle_eta_label(timeframe)
+
+    st.title("⚡ Institutional SMC Analytics Terminal Pro")
+    st.caption(f"Sync: **{ist_now_str}**  |  Bar Close: **{candle_eta}**  |  Mode: {refresh_mode}  |  Cycle: {cycle_count}  |  *Educational Chart Study Only*")
+
+    q_cols = st.columns([1, 1, 1, 1, 1, 1.3])
+    q_keys = ["Nifty 50", "Bank Nifty", "Fin Nifty", "Sensex", "Gold"]
+    for idx, q_name in enumerate(q_keys):
+        with q_cols[idx]:
+            if st.button(q_name, key=f"quick_sym_{q_name}"):
+                st.session_state["quick_override_symbol"] = q_name
+                st.rerun()
+    with q_cols[5]:
+        if st.button("Reset to Sidebar", key="quick_sym_reset"):
+            st.session_state["quick_override_symbol"] = None
+            st.rerun()
+
+    data = compute_smc_df(active_ticker, timeframe, period_map[timeframe])
 
     if data.empty:
         st.error("Data fetch nahi ho pa raha hai. Re-check ticker selection.")
@@ -930,59 +978,59 @@ def render_terminal_body(cycle_count=0):
     bsl_swept = bool(data['BSL_Sweep'].iloc[-1])
     ssl_swept = bool(data['SSL_Sweep'].iloc[-1])
     killzone_txt = get_ist_killzone_label()
-    pdh_val, pdl_val = get_pdh_pdl(ticker)
+    pdh_val, pdl_val = get_pdh_pdl(active_ticker)
+    sound_on = bool(st.session_state.get("sound_alerts_enabled", True))
 
-    # Automatic Telegram Notification Dispatcher
-    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
-        alert_key = f"{ticker}_{latest_setup}_{data.index[-1]}"
+    # Educational Telegram Study Note Dispatcher
+    if latest_setup in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"] and st.session_state.get("tg_token") and st.session_state.get("tg_chat"):
+        alert_key = f"{active_ticker}_{latest_setup}_{data.index[-1]}"
         if st.session_state["last_alert_sent"] != alert_key:
-            msg = f"⚡ *SMC ALERT TRIGGERED*\n\n📈 *Symbol:* {selected_asset}\n🎯 *Setup:* {latest_setup}\n💰 *Price:* ₹{latest_price:.2f}\n📊 *RSI:* {latest_rsi:.1f}\n🕒 *Timeframe:* {timeframe}\n\n_TradeVortex SMC Engine_"
+            msg = f"📚 *SMC STUDY ZONE NOTE (Educational)*\n\n📈 *Symbol:* {active_sym_label}\n🧭 *Zone:* {latest_setup}\n💰 *Spot:* ₹{latest_price:.2f}\n📊 *RSI:* {latest_rsi:.1f}\n🕒 *Timeframe:* {timeframe}\n\n_For learning & chart study only — Not SEBI advice_"
             send_telegram_alert(st.session_state["tg_token"], st.session_state["tg_chat"], msg)
             st.session_state["last_alert_sent"] = alert_key
 
     trail_status = "⚪ Inactive"
-    if latest_setup == "BULLISH SETUP":
+    if latest_setup == "BULLISH STUDY ZONE":
         sl = latest_price - (1.5 * latest_atr)
         target = latest_price + (3.0 * latest_atr)
         one_to_one = latest_price + (1.5 * latest_atr)
         if latest_price >= one_to_one:
             sl = latest_price
-            trail_status = "🛡️ Breakeven / Trail SL Active"
+            trail_status = "🛡️ Breakeven / Trail Ref Active"
         else:
-            trail_status = "🎯 Working Toward 1:1 Trail"
+            trail_status = "🎯 Tracking Toward 1:1 Ref"
         risk_amount = (capital * risk_per_trade) / 100
         stop_loss_points = abs(latest_price - sl)
         position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
-    elif latest_setup == "BEARISH SETUP":
+    elif latest_setup == "BEARISH STUDY ZONE":
         sl = latest_price + (1.5 * latest_atr)
         target = latest_price - (3.0 * latest_atr)
         one_to_one = latest_price - (1.5 * latest_atr)
         if latest_price <= one_to_one:
             sl = latest_price
-            trail_status = "🛡️ Breakeven / Trail SL Active"
+            trail_status = "🛡️ Breakeven / Trail Ref Active"
         else:
-            trail_status = "🎯 Working Toward 1:1 Trail"
+            trail_status = "🎯 Tracking Toward 1:1 Ref"
         risk_amount = (capital * risk_per_trade) / 100
         stop_loss_points = abs(latest_price - sl)
         position_size = int(risk_amount / stop_loss_points) if stop_loss_points > 0 else 0
     else:
         sl, target, position_size = 0.0, 0.0, 0
 
-    # Record active setup in session history log (once per bar + setup)
-    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"]:
-        setup_sig_key = f"{ticker}_{timeframe}_{latest_setup}_{str(data.index[-1])}"
+    if latest_setup in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"]:
+        setup_sig_key = f"{active_ticker}_{timeframe}_{latest_setup}_{str(data.index[-1])}"
         if setup_sig_key not in st.session_state["logged_setup_keys"]:
             ist_time_str = datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime("%H:%M:%S")
             st.session_state["logged_setup_keys"].append(setup_sig_key)
             st.session_state["session_setup_log"].insert(0, {
                 "Time (IST)": ist_time_str,
-                "Asset": selected_asset,
+                "Asset": active_sym_label,
                 "TF": timeframe,
                 "Setup": latest_setup,
-                "Entry": round(latest_price, 2),
-                "SL": round(sl, 2),
-                "Target": round(target, 2),
-                "Trail": trail_status,
+                "Ref Price": round(latest_price, 2),
+                "SL Ref": round(sl, 2),
+                "Target Ref": round(target, 2),
+                "Trail Ref": trail_status,
             })
             st.session_state["session_setup_log"] = st.session_state["session_setup_log"][:50]
 
@@ -993,30 +1041,32 @@ def render_terminal_body(cycle_count=0):
     buy_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sine';osc.frequency.setValueAtTime(800,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
     sell_sound_js = "<script>var ctx=new(window.AudioContext||window.webkitAudioContext)();var osc=ctx.createOscillator();osc.type='sawtooth';osc.frequency.setValueAtTime(300,ctx.currentTime);osc.connect(ctx.destination);osc.start();osc.stop(ctx.currentTime+0.4);</script>"
 
-    if latest_setup == "BULLISH SETUP":
+    if latest_setup == "BULLISH STUDY ZONE":
         row1_2.markdown(
-            f"""<div style="background-color:#0e3a1f; color:#2ecc71; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #2ecc71; font-size:16px;">
+            f"""<div style="background-color:#0e3a1f; color:#2ecc71; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #2ecc71; font-size:15px;">
             🚀 {latest_setup}
             </div>""", unsafe_allow_html=True
         )
-        st.components.v1.html(buy_sound_js, height=0)
-    elif latest_setup == "BEARISH SETUP":
+        if sound_on:
+            st.components.v1.html(buy_sound_js, height=0)
+    elif latest_setup == "BEARISH STUDY ZONE":
         row1_2.markdown(
-            f"""<div style="background-color:#3a0e0e; color:#e74c3c; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #e74c3c; font-size:16px;">
+            f"""<div style="background-color:#3a0e0e; color:#e74c3c; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #e74c3c; font-size:15px;">
             🔻 {latest_setup}
             </div>""", unsafe_allow_html=True
         )
-        st.components.v1.html(sell_sound_js, height=0)
+        if sound_on:
+            st.components.v1.html(sell_sound_js, height=0)
     else:
         if is_consolidating:
             row1_2.markdown(
-                f"""<div style="background-color:#3a320e; color:#f1c40f; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #f1c40f; font-size:16px;">
+                f"""<div style="background-color:#3a320e; color:#f1c40f; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #f1c40f; font-size:15px;">
                 ⚠️ CONSOLIDATION PHASE
                 </div>""", unsafe_allow_html=True
             )
         else:
             row1_2.markdown(
-                f"""<div style="background-color:#2c3e50; color:#bdc3c7; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #7f8c8d; font-size:16px;">
+                f"""<div style="background-color:#2c3e50; color:#bdc3c7; padding:12px; border-radius:6px; text-align:center; font-weight:bold; border:1.5px solid #7f8c8d; font-size:15px;">
                 ⏳ {latest_setup}
                 </div>""", unsafe_allow_html=True
             )
@@ -1024,21 +1074,21 @@ def render_terminal_body(cycle_count=0):
     row1_3.metric("Order Flow", latest_of)
     row1_4.metric("RSI (14)", f"{latest_rsi:.1f}")
 
-    # Liquidity Sweep, Session, Trail SL & PDH/PDL Bar
     pdh_pdl_txt = f"PDH: {pdh_val:.2f} | PDL: {pdl_val:.2f}" if (pdh_val is not None and pdl_val is not None) else "PDH/PDL: N/A"
     sweep_label = "🔴 BSL Swept (High Hunt)" if bsl_swept else ("🟢 SSL Swept (Low Hunt)" if ssl_swept else "⚪ No Active Sweep")
-    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **Trail SL:** {trail_status}  |  **{pdh_pdl_txt}**")
+    sound_txt = "🔊 Sound ON" if sound_on else "🔇 Sound Muted"
+    st.caption(f"**Session:** {killzone_txt}  |  **Liquidity Sweep:** {sweep_label}  |  **Trail Ref:** {trail_status}  |  **{pdh_pdl_txt}**  |  {sound_txt}")
 
     # --- 📊 REAL MULTI-TIMEFRAME CONFLUENCE MATRIX ---
     st.markdown("---")
-    st.markdown("### 📊 Multi-Timeframe Confluence Grid")
-    mtf_data = get_mtf_bias(ticker)
+    st.markdown("### 📊 Multi-Timeframe Confluence Grid (Study)")
+    mtf_data = get_mtf_bias(active_ticker)
     mtf_5m = mtf_data.get("5m", latest_of)
     mtf_15m = mtf_data.get("15m", latest_of)
     mtf_1h = mtf_data.get("1h", "BULLISH" if latest_price > data['EMA200'].iloc[-1] else "BEARISH")
 
     if mtf_5m == mtf_15m == mtf_1h and mtf_5m in ["BULLISH", "BEARISH"]:
-        st.success(f"🔥 **A+ TRIPLE CONFLUENCE:** 5m, 15m & 1h all aligned **{mtf_5m}**.")
+        st.success(f"🔥 **TRIPLE ALIGNMENT (STUDY):** 5m, 15m & 1h all showing **{mtf_5m}** structure.")
 
     mtf_cols = st.columns(3)
     with mtf_cols[0]:
@@ -1048,8 +1098,8 @@ def render_terminal_body(cycle_count=0):
     with mtf_cols[2]:
         st.markdown(f"**1h Timeframe**<br><div class='{'confluence-badge-green' if mtf_1h=='BULLISH' else 'confluence-badge-red'}'>{mtf_1h}</div>", unsafe_allow_html=True)
 
-    # --- 🎯 STRIKE PRICE MAPPING & OPTIONS MATRIX ENGINE ---
-    meta = ASSET_METADATA.get(ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
+    # --- 🎯 STRIKE PRICE MAPPING & OPTIONS MATRIX ENGINE (EDUCATIONAL) ---
+    meta = ASSET_METADATA.get(active_ticker, {"step": 50, "lot": 25, "tv_symbol": "NSE:NIFTY"})
     step = meta["step"]
     lot_size = meta["lot"]
     tv_symbol = meta["tv_symbol"]
@@ -1057,14 +1107,14 @@ def render_terminal_body(cycle_count=0):
     atm_strike = round(latest_price / step) * step
 
     mapped_strike = atm_strike
-    contract_type = "CE" if latest_setup == "BULLISH SETUP" else ("PE" if latest_setup == "BEARISH SETUP" else "CE/PE")
+    contract_type = "CE" if latest_setup == "BULLISH STUDY ZONE" else ("PE" if latest_setup == "BEARISH STUDY ZONE" else "CE/PE")
 
-    if latest_setup == "BULLISH SETUP":
+    if latest_setup == "BULLISH STUDY ZONE":
         if "ITM" in strike_type:
             mapped_strike = atm_strike - step
         elif "OTM" in strike_type:
             mapped_strike = atm_strike + step
-    elif latest_setup == "BEARISH SETUP":
+    elif latest_setup == "BEARISH STUDY ZONE":
         if "ITM" in strike_type:
             mapped_strike = atm_strike + step
         elif "OTM" in strike_type:
@@ -1073,65 +1123,64 @@ def render_terminal_body(cycle_count=0):
     total_lots = max(1, position_size // lot_size) if position_size > 0 else 0
 
     st.markdown("---")
-    st.markdown("### 📈 Option Chain & Sentiment Heatboard")
+    st.markdown("### 📈 Option Strike Concept & Sentiment Heatboard (Study)")
 
     opt_col1, opt_col2, opt_col3, opt_col4 = st.columns(4)
 
     est_pcr = round(1.25 if latest_of == "BULLISH" else (0.75 if latest_of == "BEARISH" else 0.98), 2)
-    pcr_bias = "Bullish (Put Writing)" if est_pcr > 1.0 else ("Bearish (Call Writing)" if est_pcr < 0.9 else "Neutral")
+    pcr_bias = "Bullish Bias (Study)" if est_pcr > 1.0 else ("Bearish Bias (Study)" if est_pcr < 0.9 else "Neutral")
 
-    if latest_setup == "BULLISH SETUP":
+    if latest_setup == "BULLISH STUDY ZONE":
         opt_col1.markdown(f"""
         <div style="background-color:#143d22; border: 2px solid #2ecc71; padding:10px; border-radius:8px; text-align:center;">
-            <span style="color:#2ecc71; font-size:12px; font-weight:bold;">EDUCATIONAL CE VIEW</span>
+            <span style="color:#2ecc71; font-size:12px; font-weight:bold;">EDUCATIONAL CE CONCEPT</span>
             <h2 style="color:#ffffff; margin:0;">{mapped_strike} CE</h2>
             <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
         </div>
         """, unsafe_allow_html=True)
-    elif latest_setup == "BEARISH SETUP":
+    elif latest_setup == "BEARISH STUDY ZONE":
         opt_col1.markdown(f"""
         <div style="background-color:#3d1414; border: 2px solid #e74c3c; padding:10px; border-radius:8px; text-align:center;">
-            <span style="color:#e74c3c; font-size:12px; font-weight:bold;">EDUCATIONAL PE VIEW</span>
+            <span style="color:#e74c3c; font-size:12px; font-weight:bold;">EDUCATIONAL PE CONCEPT</span>
             <h2 style="color:#ffffff; margin:0;">{mapped_strike} PE</h2>
             <span style="color:#bdc3c7; font-size:11px;">({strike_type.split()[0]})</span>
         </div>
         """, unsafe_allow_html=True)
     else:
-        opt_col1.info("⏳ Waiting for Market Setup...")
+        opt_col1.info("⏳ Waiting for Study Zone...")
 
-    opt_col2.metric("Spot Stop-Loss", f"₹ {sl:.2f}" if sl > 0 else "N/A")
-    opt_col3.metric("Spot Target (1:2)", f"₹ {target:.2f}" if target > 0 else "N/A")
-    opt_col4.metric("Est. Market PCR Ratio", f"{est_pcr}", delta=pcr_bias)
+    opt_col2.metric("Spot SL Ref", f"₹ {sl:.2f}" if sl > 0 else "N/A")
+    opt_col3.metric("Spot Target Ref (1:2)", f"₹ {target:.2f}" if target > 0 else "N/A")
+    opt_col4.metric("Est. PCR Ratio (Study)", f"{est_pcr}", delta=pcr_bias)
 
     st.markdown("---")
 
     row2_1, row2_2, row2_3 = st.columns(3)
-    row2_1.metric("Est. Spot Stop-Loss", f"{sl:.2f}" if sl > 0 else "N/A")
-    row2_2.metric("Est. Spot Target", f"{target:.2f}" if target > 0 else "N/A")
-    row2_3.metric("Max Quantity Model", f"{position_size} Qty ({total_lots} Lots)" if position_size > 0 else "N/A")
+    row2_1.metric("Est. Spot SL Ref", f"{sl:.2f}" if sl > 0 else "N/A")
+    row2_2.metric("Est. Spot Target Ref", f"{target:.2f}" if target > 0 else "N/A")
+    row2_3.metric("Risk Math Qty Model", f"{position_size} Qty ({total_lots} Lots)" if position_size > 0 else "N/A")
 
-    # Copy-Ready Signal Summary Card for Students / Telegram
-    if latest_setup in ["BULLISH SETUP", "BEARISH SETUP"]:
+    if latest_setup in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"]:
         summary_text = (
-            f"⚡ SMC Educational Setup — {selected_asset} ({timeframe})\n"
-            f"• Setup: {latest_setup} | Order Flow: {latest_of}\n"
-            f"• Strike View: {mapped_strike} {contract_type} ({strike_type.split()[0]})\n"
+            f"📚 SMC Study Note (Educational) — {active_sym_label} ({timeframe})\n"
+            f"• Zone: {latest_setup} | Order Flow: {latest_of}\n"
+            f"• Strike Concept: {mapped_strike} {contract_type} ({strike_type.split()[0]})\n"
             f"• Spot Reference: {latest_price:.2f}\n"
-            f"• Spot SL: {sl:.2f} | Target (1:2): {target:.2f}\n"
-            f"• Trail Status: {trail_status}\n"
-            f"(Educational study note only)"
+            f"• SL Ref: {sl:.2f} | Target Ref (1:2): {target:.2f}\n"
+            f"• Trail Ref: {trail_status}\n"
+            f"(Educational study note only — Not SEBI advice)"
         )
-        with st.expander("📋 Copy-Ready Signal Summary Note", expanded=False):
+        with st.expander("📋 Copy-Ready Study Summary Note", expanded=False):
             st.code(summary_text, language="text")
 
-    if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO SETUP":
+    if st.session_state.get('broker_connected', False) and latest_setup != "NEUTRAL / NO STUDY ZONE":
         active_b = st.session_state.get('active_broker', 'Broker')
-        st.markdown(f"### ⚡ Broker Integration Sandbox ({active_b})")
-        if st.button(f"🔍 Simulate Order Payload: {selected_asset} {mapped_strike} {contract_type}", key="exec_trade_btn"):
-            st.info(f"Sandbox Payload Generated for {selected_asset} {mapped_strike} {contract_type} ({total_lots} Lots). (Note: Manual execution required as per educational policy).")
+        st.markdown(f"### ⚡ Study Payload Inspector ({active_b})")
+        if st.button(f"🔍 Inspect Study Payload: {active_sym_label} {mapped_strike} {contract_type}", key="exec_trade_btn"):
+            st.info(f"Educational Study Payload Preview for {active_sym_label} {mapped_strike} {contract_type} ({total_lots} Lots). No live order placed; educational practice only.")
 
     # --- LIVE CHART ENGINE (ZOOM-LOCKED + CHoCH + LABELED FVG/OB + SWEEP + PDH/PDL) ---
-    st.subheader(f"Live Chart ({selected_asset} - {timeframe})")
+    st.subheader(f"Live Chart ({active_sym_label} - {timeframe})")
 
     w_cols = st.columns([1, 1, 1, 2])
     with w_cols[0]:
@@ -1148,8 +1197,8 @@ def render_terminal_body(cycle_count=0):
 
     win_n = int(st.session_state.get("candle_window", 120))
 
-    if category == "BSE Index / F&O" or ticker in ["^BSESN", "BSE-BANK.BO"]:
-        st.success("⚡ **BSE Real-Time Data Active:** Streaming live 0-sec tick feeds via TradingView Engine.")
+    if active_category == "BSE Index / F&O" or active_ticker in ["^BSESN", "BSE-BANK.BO"]:
+        st.success("⚡ **BSE Chart View Active:** Streaming via TradingView Engine (Educational Study).")
         tv_html = f"""
         <div class="tradingview-widget-container" style="height:500px;width:100%;">
           <div id="tradingview_bse_chart" style="height:500px;width:100%;"></div>
@@ -1195,13 +1244,11 @@ def render_terminal_body(cycle_count=0):
 
         end_x = chart_df.index[-1]
 
-        # Plot Previous Day High (PDH) and Low (PDL) liquidity levels
         if pdh_val is not None:
             fig.add_hline(y=pdh_val, line_dash="dot", line_color="#38bdf8", annotation_text=f"PDH ({pdh_val:.2f})", annotation_position="top left")
         if pdl_val is not None:
             fig.add_hline(y=pdl_val, line_dash="dot", line_color="#c084fc", annotation_text=f"PDL ({pdl_val:.2f})", annotation_position="bottom left")
 
-        # Plot recent Bullish/Bearish FVG boxes with labels
         fvg_boxes = 0
         for idx in range(len(chart_df) - 1, max(-1, len(chart_df) - 35), -1):
             if fvg_boxes >= 3:
@@ -1236,7 +1283,6 @@ def render_terminal_body(cycle_count=0):
                     )
                     fvg_boxes += 1
 
-        # Plot recent Order Block zones with labels
         ob_boxes = 0
         for idx in range(len(chart_df) - 1, max(0, len(chart_df) - 35), -1):
             if ob_boxes >= 2:
@@ -1269,7 +1315,6 @@ def render_terminal_body(cycle_count=0):
                 )
                 ob_boxes += 1
 
-        # Plot BOS & CHoCH markers on chart
         bos_b_df = chart_df[chart_df['BOS_Bullish'] & (~chart_df['CHoCH_Bullish'])].tail(4)
         if not bos_b_df.empty:
             fig.add_trace(go.Scatter(
@@ -1310,7 +1355,6 @@ def render_terminal_body(cycle_count=0):
                 marker=dict(symbol='diamond', size=9, color='#fb7185')
             ))
 
-        # Plot Liquidity Sweep markers (BSL / SSL)
         bsl_df = chart_df[chart_df['BSL_Sweep']].tail(3)
         if not bsl_df.empty:
             fig.add_trace(go.Scatter(
@@ -1331,12 +1375,12 @@ def render_terminal_body(cycle_count=0):
                 marker=dict(symbol='x', size=8, color='#34d399')
             ))
 
-        if latest_setup != "NEUTRAL / NO SETUP":
-            fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="Stop Loss")
-            fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target")
+        if latest_setup != "NEUTRAL / NO STUDY ZONE":
+            fig.add_hline(y=sl, line_dash="dash", line_color="red", annotation_text="SL Ref")
+            fig.add_hline(y=target, line_dash="dash", line_color="green", annotation_text="Target Ref")
 
         fig.update_layout(
-            uirevision=f"{ticker}_{timeframe}_{win_n}_zoom_lock",
+            uirevision=f"{active_ticker}_{timeframe}_{win_n}_zoom_lock",
             xaxis_rangeslider_visible=False,
             template="plotly_dark",
             height=500,
@@ -1344,21 +1388,21 @@ def render_terminal_body(cycle_count=0):
             legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
             margin=dict(l=10, r=10, t=35, b=10)
         )
-        st.plotly_chart(fig, use_container_width=True, key=f"smc_main_chart_{ticker}_{timeframe}_{win_n}")
+        st.plotly_chart(fig, use_container_width=True, key=f"smc_main_chart_{active_ticker}_{timeframe}_{win_n}")
 
     # --- 📜 SESSION SETUP HISTORY LOG ---
     if st.session_state.get("session_setup_log"):
         st.markdown("---")
-        st.subheader("📜 Session Setup History Log")
+        st.subheader("📜 Session Study Log")
         log_df = pd.DataFrame(st.session_state["session_setup_log"])
         st.dataframe(log_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
 
         log_c1, log_c2 = st.columns([1, 1])
         with log_c1:
             st.download_button(
-                label="⬇️ Download Setup Log (CSV)",
+                label="⬇️ Download Study Log (CSV)",
                 data=log_df.to_csv(index=False).encode("utf-8"),
-                file_name=f"smc_setup_log_{datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime('%Y%m%d_%H%M')}.csv",
+                file_name=f"smc_study_log_{datetime.now(timezone(timedelta(hours=5, minutes=30))).strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv",
                 key="download_setup_log_csv"
             )
@@ -1370,10 +1414,10 @@ def render_terminal_body(cycle_count=0):
 
     # --- 🌐 ALL-MARKET LIVE SMC SCANNER ---
     st.markdown("---")
-    st.subheader(f"🌐 All-Market Live SMC Scanner ({timeframe})")
+    st.subheader(f"🌐 All-Market Live SMC Study Scanner ({timeframe})")
     scanner_filter = st.radio(
         "Scanner Filter:",
-        ["All", "Active Setups Only", "Bullish Only", "Bearish Only"],
+        ["All", "Active Study Zones Only", "Bullish Study Only", "Bearish Study Only"],
         horizontal=True,
         key="scanner_setup_filter"
     )
@@ -1395,28 +1439,27 @@ def render_terminal_body(cycle_count=0):
         s_df = compute_smc_df(sym_code, timeframe, period_map[timeframe])
         if not s_df.empty:
             s_setup = str(s_df["Setup"].iloc[-1])
-            if scanner_filter == "Active Setups Only" and s_setup not in ["BULLISH SETUP", "BEARISH SETUP"]:
+            if scanner_filter == "Active Study Zones Only" and s_setup not in ["BULLISH STUDY ZONE", "BEARISH STUDY ZONE"]:
                 continue
-            if scanner_filter == "Bullish Only" and s_setup != "BULLISH SETUP":
+            if scanner_filter == "Bullish Study Only" and s_setup != "BULLISH STUDY ZONE":
                 continue
-            if scanner_filter == "Bearish Only" and s_setup != "BEARISH SETUP":
+            if scanner_filter == "Bearish Study Only" and s_setup != "BEARISH STUDY ZONE":
                 continue
             scan_rows.append({
                 "Asset": sym_label,
                 "Price": round(float(s_df["Close"].iloc[-1]), 2),
                 "Order Flow": str(s_df["Order_Flow"].iloc[-1]),
                 "RSI": round(float(s_df["RSI"].iloc[-1]), 1),
-                "Setup": s_setup,
+                "Study Zone": s_setup,
             })
     if scan_rows:
         scan_df = pd.DataFrame(scan_rows)
-        st.dataframe(scan_df.style.map(color_table_setup, subset=["Setup"]), use_container_width=True, hide_index=True)
+        st.dataframe(scan_df.style.map(color_table_setup, subset=["Study Zone"]), use_container_width=True, hide_index=True)
     else:
         st.info("Selected filter ke mutabik abhi koi matching symbol nahi mila.")
 
     st.subheader("Live Market SMC Analytics Table")
 
-    # Clean DataFrame & Round Decimals to Prevent Mobile Overlap/Glitch
     table_df = data[['Open', 'High', 'Low', 'Close', 'Order_Flow', 'BOS_Bullish', 'BOS_Bearish', 'CHoCH_Bullish', 'CHoCH_Bearish', 'Bullish_FVG', 'Bearish_FVG', 'Consolidation', 'Setup']].tail(12).copy()
     for col in ['Open', 'High', 'Low', 'Close']:
         if col in table_df.columns:
@@ -1426,9 +1469,8 @@ def render_terminal_body(cycle_count=0):
     st.dataframe(styled_table, use_container_width=True)
 
     st.markdown("---")
-    st.caption("⚠️ **Disclaimer:** All indicators, market setups, and calculators provided in this terminal are strictly for learning, technical analysis practice, and quantitative research purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
+    st.caption("⚠️ **Disclaimer:** All indicators, study zones, and calculators provided in this terminal are strictly for learning, technical analysis practice, and educational chart study purposes only. This is not investment advice or SEBI-registered buy/sell recommendation. Trading in stock market/F&O involves substantial financial risk.")
 
-# Use @st.fragment when supported by Streamlit version so chart zoom/pan doesn't reload the full page
 if hasattr(st, "fragment"):
     if refresh_ms > 0:
         @st.fragment(run_every=max(5, refresh_ms // 1000))
