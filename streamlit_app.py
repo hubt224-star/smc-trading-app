@@ -60,6 +60,24 @@ def color_table_setup(val):
         return 'background-color: #3a320e; color: #f1c40f; font-weight: bold;'
     return ''
 
+# --- STRICT ADMIN SECRET LOCK HELPER (NO HARDCODED PASSWORD FALLBACK) ---
+def get_admin_secret_password():
+    try:
+        if "admin_auth" in st.secrets and "password" in st.secrets["admin_auth"]:
+            sec_pwd = str(st.secrets["admin_auth"]["password"] or "").strip()
+            if sec_pwd:
+                return sec_pwd
+    except Exception:
+        pass
+    try:
+        if "admin_password" in st.secrets:
+            sec_pwd = str(st.secrets["admin_password"] or "").strip()
+            if sec_pwd:
+                return sec_pwd
+    except Exception:
+        pass
+    return None
+
 # --- UNIQUE CLIENT LOGIN DATABASE SETUP (3-DAY TRIAL + 1-MONTH AUTO-EXPIRY + LIFETIME + ONE-TIME CLAIM + FORCE LOGOUT) ---
 CLIENTS_FILE = "clients.json"
 CLAIMS_HISTORY_FILE = "claimed_keys_history.json"
@@ -213,7 +231,7 @@ def normalize_record(cid, rec):
     rec = dict(rec) if isinstance(rec, dict) else {}
     if cid == "admin":
         rec.setdefault("name", "Mr. Yusuf (Admin)")
-        rec.setdefault("password", "SMCALGO@1999")
+        rec["password"] = "PROTECTED_BY_SECRETS"
         rec["plan"] = "Lifetime Plan (Admin)"
         rec["active"] = True
         rec["admin"] = True
@@ -241,14 +259,14 @@ def normalize_record(cid, rec):
     rec["created_at"] = created_at
     rec["expires_at"] = expires_at
     rec["active"] = active
-    rec["admin"] = bool(rec.get("admin", False))
+    rec["admin"] = False
     rec.setdefault("active_session", None)
     return rec
 
 DEFAULT_CLIENTS = {
     "admin": {
         "name": "Mr. Yusuf (Admin)",
-        "password": "SMCALGO@1999",
+        "password": "PROTECTED_BY_SECRETS",
         "plan": "Lifetime Plan (Admin)",
         "created_at": "2026-01-01T00:00:00+00:00",
         "expires_at": None,
@@ -284,10 +302,18 @@ def save_clients(data, deleted_set=None):
         if k == "_deleted_ids":
             continue
         nk = normalize_client_id(k)
-        if nk and nk not in deleted_set:
+        if nk and nk != "admin" and nk not in deleted_set:
             cleaned_data[nk] = normalize_record(nk, v)
 
-    cleaned_data["admin"] = normalize_record("admin", cleaned_data.get("admin") or DEFAULT_CLIENTS["admin"])
+    prev_admin_session = None
+    if isinstance((data or {}).get("admin"), dict):
+        prev_admin_session = (data or {})["admin"].get("active_session")
+    elif isinstance(st.session_state.get("runtime_clients_cache"), dict):
+        prev_admin_session = (st.session_state["runtime_clients_cache"].get("admin") or {}).get("active_session")
+
+    admin_rec = normalize_record("admin", DEFAULT_CLIENTS["admin"])
+    admin_rec["active_session"] = prev_admin_session
+    cleaned_data["admin"] = admin_rec
 
     sync_to_runtime_cache(cleaned_data, deleted_set)
     try:
@@ -348,7 +374,7 @@ def load_clients():
         if "clients" in st.secrets and isinstance(st.secrets["clients"], dict):
             for k, v in st.secrets["clients"].items():
                 nk = normalize_client_id(k)
-                if nk and nk not in deleted_set and nk not in merged and isinstance(v, dict):
+                if nk and nk != "admin" and nk not in deleted_set and nk not in merged and isinstance(v, dict):
                     merged[nk] = normalize_record(nk, v)
     except Exception:
         pass
@@ -402,10 +428,19 @@ def enforce_session_and_expiry():
         return
 
     curr_id = st.session_state.get("current_user_id")
-    if not curr_id or curr_id == "admin":
+    if not curr_id:
         return
 
     db_fresh = load_clients()
+    if curr_id == "admin":
+        if not get_admin_secret_password():
+            force_logout_user("⚠️ Admin secret configure nahi hai. Kripya st.secrets mein password set karein.")
+        admin_rec = db_fresh.get("admin", {})
+        saved_admin_sid = admin_rec.get("active_session")
+        if saved_admin_sid and saved_admin_sid != st.session_state.get("my_session_id"):
+            force_logout_user("⚠️ Admin session kisi aur device par active hua hai.")
+        return
+
     if curr_id not in db_fresh:
         force_logout_user("⚠️ Aapka account remove kar diya gaya hai. Kripya support se sampark karein.")
 
@@ -474,13 +509,14 @@ for k, v in defaults.items():
     if k not in st.session_state:
         st.session_state[k] = v
 
-# Auto-restore session after browser refresh if sid matches a valid active & non-expired user/admin
+# Auto-restore session after browser refresh if sid matches active session in DB
 if not st.session_state["authenticated"] and persisted_sid:
     db_restore = load_clients()
-    if persisted_sid == "admin_session_" + str(db_restore["admin"].get("password", "SMCALGO@1999")).strip():
+    admin_rec = db_restore.get("admin", {})
+    if get_admin_secret_password() and admin_rec.get("active_session") and admin_rec.get("active_session") == persisted_sid:
         st.session_state["authenticated"] = True
         st.session_state["admin_mode"] = True
-        st.session_state["client_name"] = db_restore["admin"].get("name", "Mr. Yusuf (Admin)")
+        st.session_state["client_name"] = admin_rec.get("name", "Mr. Yusuf (Admin)")
         st.session_state["current_user_id"] = "admin"
         st.session_state["my_session_id"] = persisted_sid
     else:
@@ -492,7 +528,7 @@ if not st.session_state["authenticated"] and persisted_sid:
                 and u_rec.get("active_session") == persisted_sid
             ):
                 st.session_state["authenticated"] = True
-                st.session_state["admin_mode"] = bool(u_rec.get("admin", False))
+                st.session_state["admin_mode"] = False
                 st.session_state["client_name"] = u_rec.get("name", uid_key)
                 st.session_state["current_user_id"] = uid_key
                 st.session_state["my_session_id"] = persisted_sid
@@ -508,18 +544,27 @@ if submit_button:
     cid = normalize_client_id(client_id_input)
     pwd = str(user_pass or "").strip()
     db_fresh = load_clients()
+    admin_secret_pwd = get_admin_secret_password()
 
-    if cid == "admin" and pwd == str(db_fresh["admin"].get("password", "SMCALGO@1999")).strip():
-        admin_sid = "admin_session_" + pwd
-        st.session_state["authenticated"] = True
-        st.session_state["admin_mode"] = True
-        st.session_state["client_name"] = db_fresh["admin"].get("name", "Mr. Yusuf (Admin)")
-        st.session_state["current_user_id"] = "admin"
-        st.session_state["my_session_id"] = admin_sid
-        st.session_state["logout_notice"] = ""
-        st.query_params["sid"] = admin_sid
-        st.rerun()
-    elif cid in db_fresh and str(db_fresh[cid].get("password", "")).strip() == pwd:
+    if cid == "admin":
+        if admin_secret_pwd and pwd == admin_secret_pwd:
+            admin_sid = str(uuid.uuid4())
+            db_fresh["admin"]["active_session"] = admin_sid
+            save_clients(db_fresh)
+            clients_db = db_fresh
+
+            st.session_state["authenticated"] = True
+            st.session_state["admin_mode"] = True
+            st.session_state["client_name"] = db_fresh["admin"].get("name", "Mr. Yusuf (Admin)")
+            st.session_state["current_user_id"] = "admin"
+            st.session_state["my_session_id"] = admin_sid
+            st.session_state["logout_notice"] = ""
+            st.query_params["sid"] = admin_sid
+            st.rerun()
+        else:
+            st.session_state["authenticated"] = False
+            st.sidebar.error("❌ Incorrect Admin Credentials or Admin Secret Not Set!")
+    elif cid != "admin" and cid in db_fresh and str(db_fresh[cid].get("password", "")).strip() == pwd:
         rec_login = db_fresh[cid]
         if is_record_expired(rec_login):
             rec_login["active"] = False
@@ -540,7 +585,7 @@ if submit_button:
             clients_db = db_fresh
 
             st.session_state["authenticated"] = True
-            st.session_state["admin_mode"] = rec_login.get("admin", False)
+            st.session_state["admin_mode"] = False
             st.session_state["client_name"] = rec_login.get("name", cid)
             st.session_state["current_user_id"] = cid
             st.session_state["my_session_id"] = new_sid
@@ -561,7 +606,7 @@ enforce_session_and_expiry()
 if st.session_state["authenticated"]:
     curr_id = st.session_state.get("current_user_id")
     client_display = st.session_state.get("client_name", "Authorized User")
-    if st.session_state.get("admin_mode", False):
+    if st.session_state.get("admin_mode", False) and curr_id == "admin":
         st.sidebar.success(f"👨‍💻 Admin Logged In: {client_display}")
 
         with st.sidebar.expander("🛠️ Admin Client Manager", expanded=True):
@@ -586,7 +631,7 @@ if st.session_state["authenticated"]:
                 norm_phone = normalize_client_id(new_phone)
                 clean_name = str(new_name or "").strip()
                 clean_pass = str(new_pass or "").strip()
-                if norm_phone and clean_name and clean_pass:
+                if norm_phone and norm_phone != "admin" and clean_name and clean_pass:
                     deleted_set = get_deleted_ids()
                     deleted_set.discard(norm_phone)
                     set_deleted_ids(deleted_set)
@@ -609,7 +654,7 @@ if st.session_state["authenticated"]:
                     st.session_state["admin_status_msg"] = f"✅ Client {clean_name} ({norm_phone}) [{new_plan}] added!"
                     st.rerun()
                 else:
-                    st.error("⚠️ Fill all fields!")
+                    st.error("⚠️ Fill all valid fields (admin ID is reserved)!")
 
             st.markdown("---")
             st.markdown("**📋 Client Directory (Plan Wise)**")
@@ -689,6 +734,10 @@ if st.session_state["authenticated"]:
                 st.caption("No custom clients found.")
 
             if st.sidebar.button("Logout Admin"):
+                db_out = load_clients()
+                if "admin" in db_out:
+                    db_out["admin"]["active_session"] = None
+                    save_clients(db_out)
                 st.session_state["authenticated"] = False
                 st.session_state["admin_mode"] = False
                 if "sid" in st.query_params:
@@ -776,7 +825,7 @@ if not st.session_state["authenticated"]:
 
                 if len(norm_claim_phone) < 10 or len(clean_utr) < 6:
                     st.error("⚠️ Enter valid Phone & UTR number!")
-                elif norm_claim_phone in hist_curr["phones"] or norm_claim_phone in db_curr or norm_claim_phone in deleted_set:
+                elif norm_claim_phone == "admin" or norm_claim_phone in hist_curr["phones"] or norm_claim_phone in db_curr or norm_claim_phone in deleted_set:
                     st.error("🚫 Is Mobile Number se key pehle hi generate ho chuki hai! Dubara generate nahi hogi.")
                 elif clean_utr in hist_curr["utrs"]:
                     st.error("🚫 Ye UTR Number pehle hi use ho chuka hai! Same UTR se dubara key generate nahi hogi.")
